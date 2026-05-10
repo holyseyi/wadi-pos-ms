@@ -3,6 +3,7 @@ require_once __DIR__ . '/inc/functions.php';
 require_login();
 
 $user = current_user();
+$posName = get_pos_name();
 $allSalesItems = get_all_sales_items();
 
 // Filter by user if not admin
@@ -35,7 +36,7 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HADI POS - All Products Sold</title>
+  <title><?php echo htmlspecialchars($posName); ?> - All Products Sold</title>
   <link rel="stylesheet" href="styles.css" />
   <style>
     .sales-detail-container {

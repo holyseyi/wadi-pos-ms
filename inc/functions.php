@@ -105,6 +105,16 @@ function initialize_database(PDO $db): void {
         )'
     );
 
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )'
+    );
+
+    // Insert default POS name
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('pos_name', 'WADI POS')");
+
     $stmt = $db->query('SELECT COUNT(*) FROM products');
     if ((int) $stmt->fetchColumn() === 0) {
         $defaultProducts = get_default_products();
@@ -587,6 +597,18 @@ function get_returned_receipts(): array {
          ORDER BY r.created_at DESC'
     );
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function get_pos_name(): string {
+    $stmt = get_database()->prepare('SELECT value FROM settings WHERE key = ?');
+    $stmt->execute(['pos_name']);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $result ? $result['value'] : 'WADI POS';
+}
+
+function set_pos_name(string $name): bool {
+    $stmt = get_database()->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    return $stmt->execute(['pos_name', $name]);
 }
 
 function get_all_receipts_with_status(): array {

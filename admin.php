@@ -2,6 +2,7 @@
 require_once __DIR__ . '/inc/functions.php';
 require_admin();
 
+$posName = get_pos_name();
 $products = load_products();
 $imageOptions = get_image_options();
 $receipts = load_receipts();
@@ -157,6 +158,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+
+    if ($action === 'update_pos_name') {
+        $newName = trim($_POST['pos_name'] ?? '');
+        if ($newName !== '') {
+            if (set_pos_name($newName)) {
+                $message = 'POS name updated successfully.';
+            } else {
+                $error = 'Failed to update POS name.';
+            }
+        } else {
+            $error = 'POS name cannot be empty.';
+        }
+    }
 }
 
 if (isset($_GET['edit'])) {
@@ -176,7 +190,7 @@ $success = isset($_GET['success']);
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HADI POS - Admin Dashboard</title>
+  <title><?php echo htmlspecialchars($posName); ?> - Admin Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -186,7 +200,7 @@ $success = isset($_GET['success']);
       <div class="brand">
         <img class="brand-icon" src="images/pos-icon.svg" alt="POS icon" />
         <div>
-          <h1>WADI POS</h1>
+          <h1><?php echo htmlspecialchars($posName); ?></h1>
           <p class="subtitle">Admin dashboard for product management.</p>
         </div>
       </div>
@@ -432,6 +446,23 @@ $success = isset($_GET['success']);
               <?php endforeach; ?>
             </div>
           <?php endif; ?>
+        </div>
+      </section>
+
+      <section class="panel settings-panel">
+        <div class="panel-header">
+          <h2>Settings</h2>
+          <span class="hint">Configure system settings like the POS name.</span>
+        </div>
+        <div class="panel-content">
+          <form method="post" action="admin.php" class="settings-form">
+            <input type="hidden" name="action" value="update_pos_name" />
+            <div class="form-group">
+              <label for="pos_name">Point of Sale Name</label>
+              <input type="text" id="pos_name" name="pos_name" value="<?php echo htmlspecialchars($posName); ?>" required />
+            </div>
+            <button type="submit" class="primary">Update Name</button>
+          </form>
         </div>
       </section>
     </main>

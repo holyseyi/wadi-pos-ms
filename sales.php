@@ -3,6 +3,7 @@ require_once __DIR__ . '/inc/functions.php';
 require_login();
 
 $user = current_user();
+$posName = get_pos_name();
 $products = load_products();
 $message = '';
 $error = '';
@@ -59,7 +60,7 @@ if ($user['role'] === 'admin') {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HADI POS - Sales Register</title>
+  <title><?php echo htmlspecialchars($posName); ?> - Sales Register</title>
   <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -69,7 +70,7 @@ if ($user['role'] === 'admin') {
       <div class="brand">
         <img class="brand-icon" src="images/pos-icon.svg" alt="POS icon" />
         <div>
-          <h1>WADI POS</h1>
+          <h1><?php echo htmlspecialchars($posName); ?></h1>
           <p class="subtitle">Secure sales register for your team.</p>
         </div>
       </div>

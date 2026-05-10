@@ -31,13 +31,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $error = 'Invalid username or password. Please try again.';
 }
+$posName = get_pos_name();
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HADI POS - Login</title>
+  <title><?php echo htmlspecialchars($posName); ?> - Login</title>
   <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -46,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="login-card">
       <img class="brand-image" src="images/pos-hero.svg" alt="POS branding" />
       <div class="login-content">
-        <h1>WADI POS Login</h1>
+        <h1><?php echo htmlspecialchars($posName); ?> Login</h1>
         <p class="login-description">
           Use secure credentials to access the sales register or the admin portal.
         </p>

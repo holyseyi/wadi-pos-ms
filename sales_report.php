@@ -3,6 +3,7 @@ require_once __DIR__ . '/inc/functions.php';
 require_login();
 
 $user = current_user();
+$posName = get_pos_name();
 
 // Get period from URL parameter
 $period = $_GET['period'] ?? 'day';
@@ -120,7 +121,7 @@ $netRevenue = $totalRevenue - $returnedRevenue;
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HADI POS - Sales Report - <?php echo $periods[$period]; ?></title>
+  <title><?php echo htmlspecialchars($posName); ?> - Sales Report - <?php echo $periods[$period]; ?></title>
   <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
   <style>
     * {

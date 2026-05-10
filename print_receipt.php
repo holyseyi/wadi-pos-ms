@@ -2,6 +2,7 @@
 require_once __DIR__ . '/inc/functions.php';
 require_login();
 
+$posName = get_pos_name();
 $receiptId = intval($_GET['id'] ?? 0);
 if ($receiptId <= 0) {
     http_response_code(404);
@@ -37,7 +38,7 @@ if ($user['role'] !== 'admin' && $receipt['username'] !== $user['username']) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title> HADI POS - Receipt #<?php echo str_pad((string)$receipt['order_id'], 8, '0', STR_PAD_LEFT); ?></title>
+  <title><?php echo htmlspecialchars($posName); ?> - Receipt #<?php echo str_pad((string)$receipt['order_id'], 8, '0', STR_PAD_LEFT); ?></title>
   <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
   <style>
     * {

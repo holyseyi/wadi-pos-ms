@@ -3,6 +3,7 @@ require_once __DIR__ . '/inc/functions.php';
 require_login();
 
 $user = current_user();
+$posName = get_pos_name();
 $allReceipts = get_all_receipts_with_status();
 
 // Extract items from receipts
@@ -50,7 +51,7 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HADI POS - Returned Products</title>
+  <title><?php echo htmlspecialchars($posName); ?> - Returned Products</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
   <style>

@@ -1,12 +1,18 @@
 <?php
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 require_once __DIR__ . '/inc/functions.php';
 require_admin();
 
-$posName = get_pos_name();
-$products = load_products();
-$imageOptions = get_image_options();
-$receipts = load_receipts();
-$users = get_all_users();
+try {
+    $posName = get_pos_name();
+    $products = load_products();
+    $imageOptions = get_image_options();
+    $receipts = load_receipts();
+    $users = get_all_users();
+} catch (Exception $e) {
+    die('Database error: ' . $e->getMessage());
+}
 $message = '';
 $error = '';
 $editProduct = null;

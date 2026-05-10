@@ -227,7 +227,17 @@ function get_image_options(): array {
 
     $uploadPath = __DIR__ . '/../images/uploads';
     if (is_dir($uploadPath)) {
-        $images = glob($uploadPath . '/*.{png,jpg,jpeg,svg}', GLOB_BRACE);
+        if (defined('GLOB_BRACE')) {
+            $images = glob($uploadPath . '/*.{png,jpg,jpeg,svg}', GLOB_BRACE);
+        } else {
+            $images = array_merge(
+                glob($uploadPath . '/*.png') ?: [],
+                glob($uploadPath . '/*.jpg') ?: [],
+                glob($uploadPath . '/*.jpeg') ?: [],
+                glob($uploadPath . '/*.svg') ?: []
+            );
+        }
+
         foreach ($images as $image) {
             $relPath = 'images/uploads/' . basename($image);
             $options[$relPath] = ucfirst(pathinfo(basename($image), PATHINFO_FILENAME));

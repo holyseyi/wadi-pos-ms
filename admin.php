@@ -10,6 +10,7 @@ try {
     $imageOptions = get_image_options();
     $receipts = load_receipts();
     $users = get_all_users();
+    $loginEvents = load_login_events();
 } catch (Exception $e) {
     die('Database error: ' . $e->getMessage());
 }
@@ -453,6 +454,36 @@ $success = isset($_GET['success']);
             </div>
           <?php endif; ?>
         </div>
+      </section>
+
+      <section class="panel login-history-panel">
+        <div class="panel-header">
+          <h2>Login activity</h2>
+          <span class="hint">Recent logins by sales representatives and administrators.</span>
+        </div>
+
+        <?php if (empty($loginEvents)): ?>
+          <p class="empty-message">No login activity recorded yet.</p>
+        <?php else: ?>
+          <div class="history-list">
+            <?php foreach ($loginEvents as $event): ?>
+              <article class="history-card">
+                <div class="history-main">
+                  <strong><?php echo htmlspecialchars($event['username']); ?></strong>
+                  <span class="user-role <?php echo $event['role'] === 'admin' ? 'admin-role' : 'sales-role'; ?>">
+                    <?php echo htmlspecialchars(ucfirst($event['role'])); ?>
+                  </span>
+                </div>
+                <div class="history-details">
+                  <span>Signed in at <?php echo htmlspecialchars(date('Y-m-d H:i:s', strtotime($event['created_at']))); ?></span>
+                  <?php if (!empty($event['ip'])): ?>
+                    <span> | IP: <?php echo htmlspecialchars($event['ip']); ?></span>
+                  <?php endif; ?>
+                </div>
+              </article>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
       </section>
 
       <section class="panel settings-panel">

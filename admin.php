@@ -311,11 +311,11 @@ $success = isset($_GET['success']);
                   <div class="admin-stock <?php echo ($product['quantity'] <= 0) ? 'out-of-stock' : 'in-stock'; ?>">
                     Stock: <?php echo htmlspecialchars($product['quantity']); ?> 
                     <?php if ($product['quantity'] <= 0): ?><span class="stock-warning">(Out of stock)</span><?php endif; ?>
-                    <form method="post" action="admin.php" style="display:inline; margin-left: 10px;">
+                    <form method="post" action="admin.php" class="stock-update-form">
                       <input type="hidden" name="action" value="update_stock" />
                       <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>" />
-                      <input type="number" name="quantity" value="<?php echo htmlspecialchars($product['quantity']); ?>" min="0" style="width: 60px; padding: 2px 4px; border: 1px solid #ddd; border-radius: 4px;" />
-                      <button type="submit" style="padding: 2px 6px; font-size: 0.8rem; background: #2d8659; color: white; border: none; border-radius: 4px; cursor: pointer;">Update</button>
+<input type="number" name="quantity" value="<?php echo htmlspecialchars($product['quantity']); ?>" min="0" class="stock-input" />
+                      <button type="submit" class="stock-update-btn">Update</button>
                     </form>
                   </div>
                 </div>
@@ -323,8 +323,8 @@ $success = isset($_GET['success']);
               </div>
               <div class="admin-actions">
                 <a class="tertiary" href="admin.php?edit=<?php echo $product['id']; ?>">Edit</a>
-                <form method="post" action="admin.php" style="display:inline;">
-                  <input type="hidden" name="action" value="delete_product" />
+<form method="post" action="admin.php" class="inline-form">
+                      <input type="hidden" name="action" value="delete_product" />
                   <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>" />
                   <button class="secondary" type="submit" onclick="return confirm('Delete this product?');">Delete</button>
                 </form>
@@ -341,7 +341,7 @@ $success = isset($_GET['success']);
         </div>
 
         <?php if ($message): ?>
-          <p class="login-hint" style="color: green;"><?php echo htmlspecialchars($message); ?></p>
+          <p class="login-hint text-success"><?php echo htmlspecialchars($message); ?></p>
         <?php endif; ?>
         <?php if ($error): ?>
           <p class="error-text"><?php echo htmlspecialchars($error); ?></p>
@@ -362,24 +362,24 @@ $success = isset($_GET['success']);
                   <div class="receipt-return-status">
                     Status: 
                     <?php if ($receipt['return_status'] === 'Returned'): ?>
-                      <span style="color: #bf2d2d; font-weight: bold;">RETURNED</span>
-                    <?php else: ?>
-                      <span style="color: #2d8659; font-weight: bold;">ACTIVE</span>
+<span class="receipt-status returned">RETURNED</span>
+                     <?php else: ?>
+                       <span class="receipt-status active">ACTIVE</span>
                     <?php endif; ?>
                   </div>
                 </div>
                 <pre class="receipt-management-preview"><?php echo htmlspecialchars($receipt['receipt_content']); ?></pre>
                 <div class="receipt-management-actions">
-                  <form method="post" action="admin.php" style="display:inline;">
-                    <input type="hidden" name="action" value="update_return_status" />
+<form method="post" action="admin.php" class="inline-form">
+                      <input type="hidden" name="action" value="update_return_status" />
                     <input type="hidden" name="receipt_id" value="<?php echo $receipt['id']; ?>" />
                     <select name="return_status" class="status-select" onchange="this.form.submit()">
                       <option value="Active" <?php echo $receipt['return_status'] === 'Active' ? 'selected' : ''; ?>>Mark as Active</option>
                       <option value="Returned" <?php echo $receipt['return_status'] === 'Returned' ? 'selected' : ''; ?>>Mark as Returned</option>
                     </select>
                   </form>
-                  <form method="post" action="admin.php" style="display:inline;">
-                    <input type="hidden" name="action" value="delete_sale" />
+<form method="post" action="admin.php" class="inline-form">
+                      <input type="hidden" name="action" value="delete_sale" />
                     <input type="hidden" name="order_id" value="<?php echo $receipt['order_id']; ?>" />
                     <button class="secondary" type="submit" onclick="return confirm('Delete this sale permanently?');">Delete Sale</button>
                   </form>
@@ -440,8 +440,8 @@ $success = isset($_GET['success']);
                   </div>
                   <div class="user-actions">
                     <?php if ($user['id'] !== $_SESSION['user']['id']): ?>
-                      <form method="post" action="admin.php" style="display:inline;">
-                        <input type="hidden" name="action" value="delete_user" />
+<form method="post" action="admin.php" class="inline-form">
+                         <input type="hidden" name="action" value="delete_user" />
                         <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>" />
                         <button class="secondary" type="submit" onclick="return confirm('Delete this user account? This action cannot be undone.')">Delete</button>
                       </form>
@@ -521,16 +521,16 @@ $success = isset($_GET['success']);
           thumb.alt = label;
           thumb.title = label;
           thumb.className = 'image-thumbnail' + (path === currentValue ? ' selected' : '');
-          thumb.onclick = () => selectImage(path);
+          thumb.onclick = () => selectImage(path, thumb);
           thumbnailsContainer.appendChild(thumb);
         });
       }
 
-      function selectImage(path) {
+      function selectImage(path, thumb) {
         hiddenInput.value = path;
         preview.src = path;
         thumbnailsContainer.querySelectorAll('.image-thumbnail').forEach(t => t.classList.remove('selected'));
-        event.target.classList.add('selected');
+        thumb.classList.add('selected');
       }
 
       renderThumbnails();

@@ -45,6 +45,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $error = 'Failed to update receipt status.';
             }
         }
+    } elseif ($action === 'print_current_receipt' || $action === 'view_current_receipt') {
+        // Redirect to the receipts page with the current/latest receipt
+        if ($user['role'] === 'admin') {
+            $userSales = load_receipts();
+        } else {
+            $userSales = load_receipts_by_user($user['username']);
+        }
+        
+        if (!empty($userSales)) {
+            $latestReceipt = $userSales[0];
+            if ($action === 'print_current_receipt') {
+                header('Location: print_receipt.php?id=' . $latestReceipt['id']);
+            } else {
+                header('Location: receipts.php?view=' . $latestReceipt['id']);
+            }
+            exit;
+        } else {
+            $error = 'No receipts available to print.';
+        }
     }
 }
 
@@ -154,59 +173,27 @@ if ($user['role'] === 'admin') {
       <section class="panel sales-history-panel">
         <div class="panel-header">
           <h2><?php echo $user['role'] === 'admin' ? 'All Sales & Returns' : 'My Sales'; ?></h2>
-          <span class="hint">Click receipt to view details or <?php echo $user['role'] === 'admin' ? 'manage returns' : 'delete sales'; ?></span>
+          <span class="hint"><?php echo $user['role'] === 'admin' ? 'Manage your sales and returns' : 'Manage your sales'; ?></span>
         </div>
 
         <?php if ($message): ?>
-          <p class="login-hint" style="color: green;"><?php echo htmlspecialchars($message); ?></p>
+          <p class="login-hint text-success"><?php echo htmlspecialchars($message); ?></p>
         <?php endif; ?>
         <?php if ($error): ?>
           <p class="error-text"><?php echo htmlspecialchars($error); ?></p>
         <?php endif; ?>
 
-        <?php if (empty($userSales)): ?>
-          <p class="empty-message">No sales or receipts available.</p>
-        <?php else: ?>
-          <div class="sales-history-list">
-            <?php foreach ($userSales as $receipt): ?>
-              <article class="sales-card">
-                <div class="sales-info">
-                  <div class="sales-id">Receipt #<?php echo htmlspecialchars(str_pad((string)$receipt['order_id'], 8, '0', STR_PAD_LEFT)); ?></div>
-                  <div class="sales-meta">
-                    By: <?php echo htmlspecialchars($receipt['username']); ?> | 
-                    <?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($receipt['created_at']))); ?>
-                  </div>
-                  <div class="sales-status">
-                    Status: 
-                    <?php if ($receipt['return_status'] === 'Returned'): ?>
-                      <span style="color: #bf2d2d; font-weight: bold;">RETURNED</span>
-                    <?php else: ?>
-                      <span style="color: #2d8659; font-weight: bold;">ACTIVE</span>
-                    <?php endif; ?>
-                  </div>
-                </div>
-                <pre class="receipt-preview"><?php echo htmlspecialchars($receipt['receipt_content']); ?></pre>
-                <div class="sales-actions">
-                  <a href="print_receipt.php?id=<?php echo $receipt['id']; ?>" class="tertiary" target="_blank">Print</a>
-                  <form method="post" action="sales.php" style="display:inline;">
-                    <input type="hidden" name="action" value="update_return_status" />
-                    <input type="hidden" name="receipt_id" value="<?php echo $receipt['id']; ?>" />
-                    <select name="return_status" class="status-select" onchange="this.form.submit()">
-                      <option value="Active" <?php echo $receipt['return_status'] === 'Active' ? 'selected' : ''; ?>>Active</option>
-                      <option value="Returned" <?php echo $receipt['return_status'] === 'Returned' ? 'selected' : ''; ?>>Mark as Returned</option>
-                    </select>
-                  </form>
-                  <form method="post" action="sales.php" style="display:inline;">
-                    <input type="hidden" name="action" value="delete_sale" />
-                    <input type="hidden" name="sale_id" value="<?php echo $receipt['order_id']; ?>" />
-                    <input type="hidden" name="receipt_id" value="<?php echo $receipt['id']; ?>" />
-                    <button class="secondary" type="submit" onclick="return confirm('Delete this sale?');">Delete</button>
-                  </form>
-                </div>
-              </article>
-            <?php endforeach; ?>
-          </div>
-        <?php endif; ?>
+        <div class="receipt-actions">
+          <form method="post" action="sales.php">
+            <input type="hidden" name="action" value="print_current_receipt" />
+            <button type="submit" class="primary">Print Current Receipt</button>
+          </form>
+          <form method="post" action="sales.php">
+            <input type="hidden" name="action" value="view_current_receipt" />
+            <button type="submit" class="secondary">View Receipt</button>
+          </form>
+          <a href="receipts.php" class="secondary">View All Receipts</a>
+        </div>
       </section>
 
       <div id="camera-preview" class="camera-preview hidden">

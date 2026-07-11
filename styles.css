@@ -313,10 +313,12 @@ button {
   cursor: pointer;
   padding: 12px 18px;
   font-weight: 500;
+  -webkit-transition: -webkit-transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
   transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
 }
 
 button:hover {
+  -webkit-transform: translateY(-1px);
   transform: translateY(-1px);
 }
 

@@ -69,7 +69,7 @@ function clearCart() {
 
 function computeTotals() {
   const subtotal = state.cart.reduce((sum, entry) => sum + entry.product.price * entry.quantity, 0);
-  const tax = subtotal * 0.08;
+  const tax = subtotal * 0;
   const total = subtotal + tax;
   return { subtotal, tax, total };
 }
@@ -164,7 +164,7 @@ function createReceipt(orderId) {
     ...state.cart.map((entry) => `${entry.quantity} × ${entry.product.name} @ ${formatMoney(entry.product.price)} = ${formatMoney(entry.product.price * entry.quantity)}`),
     "",
     `Subtotal: ${formatMoney(totals.subtotal)}`,
-    `Tax (8%): ${formatMoney(totals.tax)}`,
+    `Tax (0%): ${formatMoney(totals.tax)}`,
     `Total: ${formatMoney(totals.total)}`,
     "",
     "Thank you for your purchase!"

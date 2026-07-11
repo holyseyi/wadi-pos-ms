@@ -94,7 +94,11 @@ if ($user['role'] === 'admin') {
         </div>
       </div>
 
-      <div class="header-actions">
+      <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="header-actions">
+        <span></span><span></span><span></span>
+      </button>
+
+      <div class="header-actions" id="header-actions">
         <a href="products_sold.php" class="secondary">View all products sold</a>
         <a href="returns.php" class="secondary">All sales</a>
         <a href="sales_report.php" class="secondary">Sales reports</a>
@@ -161,7 +165,7 @@ if ($user['role'] === 'admin') {
           <div id="cart-items" class="cart-items"></div>
           <div class="cart-summary">
             <div class="summary-row"><span>Subtotal</span><span id="subtotal">$0.00</span></div>
-            <div class="summary-row"><span>Tax (8%)</span><span id="tax">$0.00</span></div>
+            <div class="summary-row"><span>Tax (0%)</span><span id="tax">$0.00</span></div>
             <div class="summary-total"><span>Total</span><span id="total">$0.00</span></div>
           </div>
           <div class="cart-actions">
@@ -210,5 +214,6 @@ if ($user['role'] === 'admin') {
     };
   </script>
   <script src="script.js"></script>
+  <script src="nav.js"></script>
 </body>
 </html>

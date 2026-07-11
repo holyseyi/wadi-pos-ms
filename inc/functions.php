@@ -546,12 +546,12 @@ function generate_receipt_content(int $orderId, array $cart): string {
         );
     }
 
-    $tax = $subtotal * 0.08;
+    $tax = $subtotal * 0;
     $total = $subtotal + $tax;
 
     $lines[] = "────────────────────────────────────";
     $lines[] = sprintf("%-30s %10s", "Subtotal", "GH₵" . number_format($subtotal, 2));
-    $lines[] = sprintf("%-30s %10s", "Tax (8%)", "GH₵" . number_format($tax, 2));
+    $lines[] = sprintf("%-30s %10s", "Tax (0%)", "GH₵" . number_format($tax, 2));
     $lines[] = sprintf("%-30s %10s", "TOTAL", "GH₵" . number_format($total, 2));
     $lines[] = "=====================================";
     $lines[] = "    Thank you for your purchase!    ";

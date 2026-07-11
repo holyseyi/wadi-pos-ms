@@ -211,7 +211,11 @@ $success = isset($_GET['success']);
           <p class="subtitle">Admin dashboard for product management.</p>
         </div>
       </div>
-      <div class="header-actions">
+      <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="header-actions">
+        <span></span><span></span><span></span>
+      </button>
+
+      <div class="header-actions" id="header-actions">
         <a href="returns.php" class="secondary">All sales</a>
         <a href="sales_report.php" class="secondary">Sales reports</a>
         <a href="sales.php" class="secondary">Sales register</a>
@@ -326,7 +330,7 @@ $success = isset($_GET['success']);
 <form method="post" action="admin.php" class="inline-form">
                       <input type="hidden" name="action" value="delete_product" />
                   <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>" />
-                  <button class="secondary" type="submit" onclick="return confirm('Delete this product?');">Delete</button>
+                  <button class="danger" type="submit" onclick="return confirm('Delete this product?');">Delete</button>
                 </form>
               </div>
             </article>
@@ -381,7 +385,7 @@ $success = isset($_GET['success']);
 <form method="post" action="admin.php" class="inline-form">
                       <input type="hidden" name="action" value="delete_sale" />
                     <input type="hidden" name="order_id" value="<?php echo $receipt['order_id']; ?>" />
-                    <button class="secondary" type="submit" onclick="return confirm('Delete this sale permanently?');">Delete Sale</button>
+                    <button class="danger" type="submit" onclick="return confirm('Delete this sale permanently?');">Delete Sale</button>
                   </form>
                 </div>
               </article>
@@ -443,7 +447,7 @@ $success = isset($_GET['success']);
 <form method="post" action="admin.php" class="inline-form">
                          <input type="hidden" name="action" value="delete_user" />
                         <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>" />
-                        <button class="secondary" type="submit" onclick="return confirm('Delete this user account? This action cannot be undone.')">Delete</button>
+                        <button class="danger" type="submit" onclick="return confirm('Delete this user account? This action cannot be undone.')">Delete</button>
                       </form>
                     <?php else: ?>
                       <span class="current-user">Current Account</span>
@@ -549,5 +553,6 @@ $success = isset($_GET['success']);
       }
     });
   </script>
+  <script src="nav.js"></script>
 </body>
 </html>

@@ -101,7 +101,7 @@ a {
   border-radius: 20px;
   padding: 22px 24px;
   margin-bottom: 24px;
-  width:86vw;
+  width: 100%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
@@ -112,8 +112,8 @@ a {
 }
 
 .brand-icon {
-  width: 60px;
-  height: 60px;
+  width: 80px;
+  height: 80px;
   background: #fff;
   border-radius: 20px;
   padding: 5px;
@@ -514,10 +514,10 @@ button.danger:hover {
   min-height: 480px;
 }
 .products-panel{
-  width: 55vw;
+  width: 100%;
 }
 .cart-panel{
-  width:29vw;
+  width: 100%;
 }
 .product-list,
 .cart-items,
@@ -831,7 +831,7 @@ button.danger:hover {
 .login-history-panel{
     overflow-y: scroll;
     height: 500px;
-    width:50vw;
+    width: 100%;
 }
 
 .receipts-list {
@@ -1045,7 +1045,7 @@ button.danger:hover {
 /* ===== SETTINGS ===== */
 .settings-panel {
   grid-column: 1 / -1;
-  width:30vw;
+  width: 100%;
 }
 
 .settings-form {
@@ -1326,7 +1326,10 @@ button.danger:hover {
 }
 
 /* ===== RESPONSIVE ===== */
-@media (max-width: 900px) {
+
+/* Tablet and below (<=960px): collapse nav into hamburger and stack grids.
+   Covers 768 x 562, 425 x 562, 375 x 562 and 320 x 562. */
+@media (max-width: 960px) {
   .menu-toggle {
     display: flex;
   }
@@ -1351,9 +1354,7 @@ button.danger:hover {
   .header-actions a {
     justify-content: flex-start;
   }
-}
 
-@media (max-width: 1024px) {
   .dashboard-grid,
   .layout-grid,
   .field-grid {
@@ -1387,9 +1388,11 @@ button.danger:hover {
   }
 }
 
-@media (max-width: 720px) {
+/* Phones (<=600px): tighter spacing and full-width controls.
+   Covers 320 x 562, 375 x 562 and 425 x 562. */
+@media (max-width: 600px) {
   body {
-    padding: 16px;
+    padding: 12px;
     background: #f8fafc;
   }
 
@@ -1400,11 +1403,29 @@ button.danger:hover {
   .header,
   .panel,
   .receipt-panel {
-    padding: 20px;
+    padding: 16px;
   }
 
   .header {
     flex-wrap: wrap;
+  }
+
+  .header h1 {
+    font-size: 1.4rem;
+  }
+
+  .brand-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .subtitle {
+    font-size: 0.85rem;
+  }
+
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .header-actions,
@@ -1413,7 +1434,11 @@ button.danger:hover {
   .cart-actions-row,
   .admin-actions,
   .order-actions,
-  .form-actions {
+  .form-actions,
+  .receipt-actions,
+  .receipt-management-actions,
+  .sales-actions,
+  .user-actions {
     justify-content: stretch;
   }
 
@@ -1421,6 +1446,27 @@ button.danger:hover {
   button,
   input[type="file"] {
     width: 100%;
+  }
+
+  .summary-total {
+    font-size: 1rem;
+  }
+
+  .product-list,
+  .cart-items {
+    gap: 10px;
+  }
+}
+
+/* Large desktops (>=1440px): give content more room.
+   Covers 1440 x 1124 and 2560 x 1873. */
+@media (min-width: 1440px) {
+  .app-shell,
+  .login-screen,
+  .receipts-container,
+  .returns-container,
+  .sales-detail-container {
+    max-width: 1320px;
   }
 }
 

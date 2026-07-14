@@ -336,6 +336,7 @@ button.secondary {
   background: #f1f5f9;
   color: #334155;
   border: 1px solid #e2e8f0;
+  width:fit-content;
 }
 
 button.secondary:hover {
@@ -346,6 +347,7 @@ button.tertiary {
   background: transparent;
   color: #001a4a;
   border: 1px solid #bcd0e8;
+  width:fit-content;
 }
 
 button.tertiary:hover {
@@ -412,10 +414,11 @@ button.danger:hover {
 
 .panel-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: space-around;
   align-items: center;
   gap: 16px;
   margin-bottom: 18px;
+  padding-top: 10px;
 }
 
 .panel-header h2 {
@@ -537,6 +540,7 @@ button.danger:hover {
   width: max-content;
   height: 600px;
   overflow-x: scroll;
+  padding:inherit;
 }
 .cart-panel{
   width: 100%;
@@ -569,7 +573,7 @@ button.danger:hover {
   border-radius: 20px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  width: 270px;
+  width: 330px;
   height: 190px;
   transition: box-shadow 0.2s;
 }
@@ -709,7 +713,7 @@ button.danger:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  justify-content: flex-end;
+  justify-content:end;
   align-items: center;
 }
 
@@ -1380,7 +1384,11 @@ button.danger:hover {
     align-items: stretch;
     gap: 10px;
   }
-
+.cart-panel {
+    width: 100%;
+    height: 600px;
+    overflow-y: scroll;
+}
   .header-actions.open {
     display: flex;
   }
@@ -1419,7 +1427,9 @@ button.danger:hover {
     width: 80px;
     height: 80px;
   }
-
+  .products-panel{
+    width:100%;
+  }
   .product-info,
   .cart-info {
     display: flex;
@@ -1431,6 +1441,11 @@ button.danger:hover {
 /* Phones (<=600px): tighter spacing and full-width controls.
    Covers 320 x 562, 375 x 562 and 425 x 562. */
 @media (max-width: 600px) {
+  .receipt-actions{
+    width:100%;
+    display:flex;
+  }
+  
   body {
     padding: 12px;
     background: #f8fafc;
@@ -1448,7 +1463,7 @@ button.danger:hover {
 
   .header {
     display: flex;
-    width: 455px;
+    width: 437px;
   }
 
   .header h1 {
@@ -1481,8 +1496,20 @@ button.danger:hover {
   .sales-actions,
   .user-actions {
     justify-content: stretch;
+    display:-webkit-inline-box;
+    text-align: end;
+  }
+  
+  .header-actions{
+    display:none;
   }
 
+  .scan-actions > button.primary{
+    width: 50%;
+  }
+  .scan-actions > button.tertiary{
+    width: 45%;
+  }
   .status-select,
   button,
   input[type="file"] {
@@ -1530,6 +1557,7 @@ button.danger:hover {
   .products-panel,
   .cart-panel {
     min-height: 560px;
+    width:100%;
   }
 
   .product-list,

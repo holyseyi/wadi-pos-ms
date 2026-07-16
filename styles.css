@@ -1332,6 +1332,53 @@ button.danger:hover {
   margin-top: 24px;
 }
 
+/* Returns report (mirrors sales_report presentation) */
+.returns-container .report-meta {
+  text-align: center;
+}
+
+.returns-container .actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 0 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.returns-container .actions .secondary {
+  text-decoration: none;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 18px;
+  background: #f8fafc;
+}
+
+.returns-container .actions .secondary:hover {
+  background: #eef2f7;
+}
+
+.returns-container .actions .print-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  background: #059669;
+  color: #ffffff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.returns-container .actions .print-btn:hover {
+  background: #047857;
+}
+
+.returns-summary h3 {
+  margin: 0 0 16px;
+  font-size: 1.15rem;
+  color: #0f172a;
+}
+
 /* ===== PRINT RECEIPT ===== */
 .print-container {
   max-width: 400px;
@@ -1632,6 +1679,17 @@ button.danger:hover {
     padding: 0;
     background: #ffffff;
     font-family: 'Courier New', monospace;
+    font-size: 11px;
+  }
+
+  h1,
+  .report-title {
+    font-size: 16px;
+  }
+
+  h2,
+  h3 {
+    font-size: 13px;
   }
 
   .print-container,
@@ -1639,6 +1697,48 @@ button.danger:hover {
     padding: 0;
     box-shadow: none;
     border-radius: 0;
+    max-width: 100%;
+  }
+
+  .report-meta,
+  .order-meta,
+  .receipt-meta,
+  .item-meta,
+  .stat-label {
+    font-size: 10px;
+  }
+
+  .stat-value,
+  .order-total,
+  .sale-total,
+  .item-price,
+  .item-name,
+  .order-id,
+  .receipt-id {
+    font-size: 12px;
+  }
+
+  .stats-grid {
+    gap: 8px;
+    padding: 10px;
+    margin-bottom: 16px;
+  }
+
+  .return-order,
+  .receipt-card,
+  .sale-item,
+  .order-summary {
+    padding: 10px;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .order-items {
+    padding: 6px;
+  }
+
+  .item-row {
+    padding: 4px 0;
   }
 
   .print-actions,

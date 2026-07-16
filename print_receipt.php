@@ -47,37 +47,66 @@ if ($user['role'] !== 'admin' && $receipt['username'] !== $user['username']) {
     body {
       font-family: 'Courier New', monospace;
       margin: 0;
-      padding: 20px;
+      padding: 16px;
       background: #f5f5f5;
+      display: flex;
+      justify-content: center;
     }
     .print-container {
-      max-width: 400px;
+      width: 320px;
+      max-width: 100%;
       margin: 0 auto;
       background: white;
-      padding: 20px;
+      padding: 18px;
       border-radius: 8px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
+    .receipt-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .receipt-brand img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+    }
+    .receipt-brand .brand-name {
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      color: #0f172a;
+      line-height: 28px;
+    }
     .receipt-content {
       white-space: pre-wrap;
-      font-size: 12px;
-      line-height: 1.5;
-      margin: 20px 0;
+      font-size: 11px;
+      line-height: 1.45;
+      margin: 14px 0;
       color: #333;
+    }
+    .receipt-note {
+      text-align: center;
+      font-size: 10px;
+      color: #64748b;
+      border-top: 1px dashed #cbd5e1;
+      padding-top: 10px;
+      margin-top: 4px;
     }
     .print-actions {
       display: flex;
       gap: 10px;
       justify-content: center;
-      margin-top: 20px;
+      margin-top: 16px;
     }
     button {
-      padding: 10px 20px;
+      padding: 8px 16px;
       border: 1px solid #ddd;
       border-radius: 4px;
       background: #f9f9f9;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 13px;
     }
     button:hover {
       background: #f0f0f0;
@@ -94,8 +123,10 @@ if ($user['role'] !== 'admin' && $receipt['username'] !== $user['username']) {
       body {
         padding: 0;
         background: white;
+        display: block;
       }
       .print-container {
+        width: 300px;
         padding: 0;
         box-shadow: none;
         border-radius: 0;
@@ -108,7 +139,12 @@ if ($user['role'] !== 'admin' && $receipt['username'] !== $user['username']) {
 </head>
 <body>
   <div class="print-container">
+    <div class="receipt-brand">
+      <img src="images/pos-icon.svg" alt="<?php echo htmlspecialchars($posName); ?> logo" />
+      <div class="brand-name"><?php echo htmlspecialchars($posName); ?></div>
+    </div>
     <div class="receipt-content"><?php echo htmlspecialchars($receiptContent); ?></div>
+    <div class="receipt-note">Products cannot be returned.</div>
     <div class="print-actions">
       <button class="print-btn" onclick="window.print()">Print Receipt</button>
       <button onclick="window.history.back()">Back</button>

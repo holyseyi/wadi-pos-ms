@@ -56,26 +56,30 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
   <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
 </head>
 <body>
-  <div class="returns-container">
-    <a href="sales.php" class="back-link">← Back to Sales Register</a>
-    
-    <h1>All Sales & Returns</h1>
-    <p>View all sales transactions with their current status</p>
+  <div class="report-container returns-container">
+    <div class="report-header">
+      <h1 class="report-title">All Sales & Returns</h1>
+      <div class="report-meta">
+        <b>View:</b> All Sales Transactions<br>
+        <b>Generated on:</b> <?php echo date('M j, Y g:i A'); ?><br>
+        <?php if ($user['role'] === 'admin'): ?>
+          <b>All Sales Representatives</b>
+        <?php else: ?>
+          <b>Sales Rep:</b> <?php echo htmlspecialchars($user['username']); ?>
+        <?php endif; ?>
+      </div>
+    </div>
 
-    <?php 
+    <?php
     $totalSales = count($groupedSales);
     $totalItems = 0;
     $totalValue = 0;
-    $returnedCount = 0;
     foreach ($groupedSales as $order) {
         $totalItems += count($order['items']);
         $totalValue += $order['total'];
-        if ($order['return_status'] === 'Returned') {
-            $returnedCount++;
-        }
     }
     ?>
-    <div class="stats-panel">
+    <div class="stats-grid">
       <div class="stat-item">
         <div class="stat-label">Total Sales</div>
         <div class="stat-value"><?php echo $totalSales; ?></div>
@@ -85,19 +89,21 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
         <div class="stat-value"><?php echo $totalItems; ?></div>
       </div>
       <div class="stat-item">
-        <div class="stat-label">Total Value</div>
+        <div class="stat-label">Gross Value</div>
         <div class="stat-value">GH₵<?php echo number_format($totalValue, 2); ?></div>
       </div>
-      <div class="stat-item">
-        <div class="stat-label">Returns</div>
-        <div class="stat-value"><?php echo $returnedCount; ?></div>
-      </div>
+    </div>
+
+    <div class="actions">
+      <a href="sales.php" class="secondary">← Back to Sales Register</a>
+      <button class="print-btn" onclick="window.print()">Print Report</button>
     </div>
 
     <?php if (empty($groupedSales)): ?>
       <p class="empty-message">No sales records found.</p>
     <?php else: ?>
-      <div class="returns-summary">
+      <div class="returns-summary sales-list">
+        <h3>Sales Details</h3>
         <?php foreach ($groupedSales as $order): ?>
           <div class="return-order <?php echo $order['return_status'] === 'Returned' ? 'returned' : ''; ?>">
             <div class="order-header">
@@ -109,8 +115,8 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
                   </span>
                 </div>
                 <div class="order-meta">
-                  Sales Rep: <?php echo htmlspecialchars($order['username']); ?> | 
-                  Date: <?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($order['created_at']))); ?>
+                  Sales Rep: <?php echo htmlspecialchars($order['username']); ?> |
+                  Date: <?php echo htmlspecialchars(date('M j, Y g:i A', strtotime($order['created_at']))); ?>
                 </div>
               </div>
               <div class="order-total <?php echo $order['return_status'] === 'Returned' ? 'returned' : 'active'; ?>">

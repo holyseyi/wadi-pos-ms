@@ -226,8 +226,20 @@ function store_uploaded_image(array $file): ?string {
     return null;
 }
 
+function product_image_src(string $image): string {
+    $basePath = __DIR__ . '/../';
+    if ($image !== '' && file_exists($basePath . $image)) {
+        return $image;
+    }
+    return 'images/pos-icon.svg';
+}
+
 function get_image_options(): array {
-    $options = [
+    $options = [];
+
+    $basePath = __DIR__ . '/../';
+
+    $defaultImages = [
         'images/uploads/asano.jpg' => 'Coffee',
         'images/bakery.svg' => 'Bakery',
         'images/food.svg' => 'Food',
@@ -235,7 +247,13 @@ function get_image_options(): array {
         'images/pos-icon.svg' => 'POS Icon'
     ];
 
-    $uploadPath = __DIR__ . '/../images/uploads';
+    foreach ($defaultImages as $relPath => $label) {
+        if (file_exists($basePath . $relPath)) {
+            $options[$relPath] = $label;
+        }
+    }
+
+    $uploadPath = $basePath . 'images/uploads';
     if (is_dir($uploadPath)) {
         if (defined('GLOB_BRACE')) {
             $images = glob($uploadPath . '/*.{png,jpg,jpeg,svg}', GLOB_BRACE);

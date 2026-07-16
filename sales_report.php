@@ -62,7 +62,9 @@ if ($period === 'all') {
 }
 
 if ($user['role'] !== 'admin') {
-    $query .= ' AND o.username = :username';
+    // For the "all" period there is no WHERE yet, so use WHERE instead of AND
+    // to avoid the condition being absorbed into the LEFT JOIN's ON clause.
+    $query .= ($period === 'all' ? ' WHERE ' : ' AND ') . 'o.username = :username';
 }
 
 $query .= ' ORDER BY o.created_at DESC';

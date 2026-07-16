@@ -283,7 +283,7 @@ $success = isset($_GET['success']);
 <div class="image-picker" data-image-options='<?php echo json_encode($imageOptions); ?>'>
                 <input type="hidden" id="product-image-menu" name="image_menu" value="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/uploads/asano.jpg'); ?>" />
                 <div id="image-thumbnails" class="image-thumbnails"></div>
-                <img id="image-preview" src="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/uploads/asano.jpg'); ?>" alt="Product preview" class="image-preview-large" />
+                <img id="image-preview" src="<?php echo htmlspecialchars(product_image_src($editProduct['image'] ?? 'images/uploads/asano.jpg')); ?>" alt="Product preview" class="image-preview-large" />
               </div>
             </label>
             <label class="input-group">
@@ -307,7 +307,7 @@ $success = isset($_GET['success']);
           <?php endif; ?>
           <?php foreach ($products as $product): ?>
             <article class="admin-product-card">
-              <img src="<?php echo htmlspecialchars($product['image']); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" />
+                <img src="<?php echo htmlspecialchars(product_image_src($product['image'])); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" />
               <div class="admin-details">
                 <div class="admin-description">
                   <div class="admin-name"><?php echo htmlspecialchars($product['name']); ?></div>

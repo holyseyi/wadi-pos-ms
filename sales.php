@@ -100,7 +100,9 @@ if ($user['role'] === 'admin') {
 
       <div class="header-actions" id="header-actions">
         <a href="products_sold.php" class="secondary">View all products sold</a>
+        <?php if ($user['role'] === 'admin'): ?>
         <a href="returns.php" class="secondary">All sales</a>
+        <?php endif; ?>
         <a href="sales_report.php" class="secondary">Sales reports</a>
         <?php if ($user['role'] === 'admin'): ?>
           <a href="admin.php" class="secondary">Admin dashboard</a>

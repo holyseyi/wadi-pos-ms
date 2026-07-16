@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $quantity = intval($_POST['quantity'] ?? 0);
         $code = trim($_POST['code'] ?? '');
         $imageMenu = trim($_POST['image_menu'] ?? '');
-        $existingImage = trim($_POST['existing_image'] ?? 'images/coffee.svg');
+        $existingImage = trim($_POST['existing_image'] ?? 'images/uploads/asano.jpg');
         $image = $existingImage;
 
         if (isset($_FILES['image_file']) && $_FILES['image_file']['error'] === UPLOAD_ERR_OK) {
@@ -281,16 +281,16 @@ $success = isset($_GET['success']);
             <label class="input-group">
               Image
 <div class="image-picker" data-image-options='<?php echo json_encode($imageOptions); ?>'>
-                <input type="hidden" id="product-image-menu" name="image_menu" value="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/coffee.svg'); ?>" />
+                <input type="hidden" id="product-image-menu" name="image_menu" value="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/uploads/asano.jpg'); ?>" />
                 <div id="image-thumbnails" class="image-thumbnails"></div>
-                <img id="image-preview" src="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/coffee.svg'); ?>" alt="Product preview" class="image-preview-large" />
+                <img id="image-preview" src="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/uploads/asano.jpg'); ?>" alt="Product preview" class="image-preview-large" />
               </div>
             </label>
             <label class="input-group">
               Upload image
               <input id="product-image-file" name="image_file" type="file" accept=".png,.jpg,.jpeg,.svg" />
             </label>
-            <input type="hidden" name="existing_image" value="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/coffee.svg'); ?>" />
+            <input type="hidden" name="existing_image" value="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/uploads/asano.jpg'); ?>" />
           </div>
 
           <div class="form-actions">
@@ -515,7 +515,7 @@ $success = isset($_GET['success']);
       const preview = document.getElementById('image-preview');
       const thumbnailsContainer = document.getElementById('image-thumbnails');
       const imageOptions = JSON.parse(imagePicker.dataset.imageOptions || '{}');
-      const currentValue = hiddenInput.value || 'images/coffee.svg';
+      const currentValue = hiddenInput.value || 'images/uploads/asano.jpg';
 
       function renderThumbnails() {
         thumbnailsContainer.innerHTML = '';

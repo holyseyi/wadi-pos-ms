@@ -1,10 +1,10 @@
+kind: wasmer.io/App.v0
 name: DZIEPOS
 app_id: da_R36ILtlUZJXE
 owner: holyseyi
 package: .
 scaling:
   mode: single_concurrency
-kind: wasmer.io/App.v0
 annotations:
   shipitcli.com/config:
     commands: {}
@@ -14,4 +14,4 @@ annotations:
     port: 8080
     use_composer: false
   shipitcli.com/provider: php
-  shipitcli.com/version: 0.21.5
+  shipitcli.com/version: 0.21.6

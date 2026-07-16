@@ -38,6 +38,8 @@ switch ($period) {
         break;
 }
 
+
+
 // Get sales data for the period
 $db = get_database();
 
@@ -66,6 +68,7 @@ if ($user['role'] !== 'admin') {
 $query .= ' ORDER BY o.created_at DESC';
 
 $stmt = $db->prepare($query);
+
 
 if ($period !== 'all') {
     $stmt->bindValue(':start_date', $startDate->format('c'));
@@ -132,7 +135,7 @@ $netRevenue = $totalRevenue - $returnedRevenue;
       margin: 0;
       padding: 20px;
       background: #f5f5f5;
-      color: #333;
+      color: #333;center
     }
     .report-container {
       max-width: 800px;
@@ -156,13 +159,11 @@ $netRevenue = $totalRevenue - $returnedRevenue;
     .report-meta {
       margin: 10px 0;
       color: #666;
+      text-align:justify;
     }
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 20px;
-      margin-bottom: 30px;
-      padding: 20px;
       background: #f8f9fa;
       border-radius: 8px;
     }
@@ -176,7 +177,7 @@ $netRevenue = $totalRevenue - $returnedRevenue;
       letter-spacing: 1px;
     }
     .stat-value {
-      font-size: 24px;
+      font-size: 16px;
       font-weight: bold;
       color: #2d8659;
       margin-top: 5px;
@@ -202,14 +203,14 @@ $netRevenue = $totalRevenue - $returnedRevenue;
     }
     .sale-id {
       font-weight: bold;
-      font-size: 16px;
+      font-size: 13px;
     }
     .sale-meta {
       font-size: 12px;
       color: #666;
     }
     .sale-total {
-      font-size: 18px;
+      font-size: 15px;
       font-weight: bold;
       color: #2d8659;
     }
@@ -230,12 +231,14 @@ $netRevenue = $totalRevenue - $returnedRevenue;
     }
     .item-name {
       font-weight: 500;
+      font-size: 12px;
     }
     .item-price {
       font-weight: bold;
+      font-size: 12px;
     }
     .actions {
-      text-align: center;
+      text-align: end;
       margin-top: 30px;
       padding-top: 20px;
       border-top: 1px solid #ddd;
@@ -300,17 +303,17 @@ $netRevenue = $totalRevenue - $returnedRevenue;
     <div class="report-header">
       <h1 class="report-title">Sales Report</h1>
       <div class="report-meta">
-        Period: <?php echo $periods[$period]; ?><br>
+        <b>Period:</b> <?php echo $periods[$period]; ?></br>
         <?php if ($period !== 'all'): ?>
-        Date Range: <?php echo $startDate->format('M j, Y'); ?> - <?php echo $endDate->format('M j, Y'); ?><br>
+        <b>Date Range:</b> <?php echo $startDate->format('M j, Y'); ?> - <?php echo $endDate->format('M j, Y'); ?><br>
         <?php else: ?>
-        Date Range: All Time<br>
+        <b>Date Range:</b> All Time</br>
         <?php endif; ?>
-        Generated: <?php echo date('M j, Y g:i A'); ?><br>
+        <b>Generated on: </b><?php echo date('M j, Y g:i A'); ?></br>
         <?php if ($user['role'] === 'admin'): ?>
-          All Sales Representatives
+          <b>All Sales Representatives</b>
         <?php else: ?>
-          Sales Rep: <?php echo htmlspecialchars($user['username']); ?>
+          <b>Sales Rep:</b> <?php echo htmlspecialchars($user['username']); ?>
         <?php endif; ?>
       </div>
     </div>
@@ -335,18 +338,10 @@ $netRevenue = $totalRevenue - $returnedRevenue;
         <div class="stat-label">Gross Revenue</div>
         <div class="stat-value">GH₵<?php echo number_format($totalRevenue, 2); ?></div>
       </div>
-      <div class="stat-item">
-        <div class="stat-label">Returns</div>
-        <div class="stat-value negative"><?php echo $returnedSales; ?></div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Return Value</div>
-        <div class="stat-value negative">GH₵<?php echo number_format($returnedRevenue, 2); ?></div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Net Revenue</div>
-        <div class="stat-value">GH₵<?php echo number_format($netRevenue, 2); ?></div>
-      </div>
+    </div>
+    <div class="actions">
+      <button class="print-btn" onclick="window.print()">Print Report</button>
+      <button onclick="window.history.back()">Back</button>
     </div>
 
     <?php if (!empty($groupedSales)): ?>
@@ -385,11 +380,12 @@ $netRevenue = $totalRevenue - $returnedRevenue;
     <?php else: ?>
       <p style="text-align: center; color: #666; margin: 40px 0;">No sales found for this period.</p>
     <?php endif; ?>
-
     <div class="actions">
       <button class="print-btn" onclick="window.print()">Print Report</button>
       <button onclick="window.history.back()">Back</button>
     </div>
+
+
   </div>
 </body>
 </html>

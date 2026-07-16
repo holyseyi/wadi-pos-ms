@@ -1,11 +1,11 @@
-[
+/*[
   {
     "id": 1,
     "code": "1001",
     "name": "Espresso",
     "category": "Beverage",
     "price": 3.5,
-    "image": "images/coffee.svg",
+    "image": "images/uploads/asano.jpg",
     "quantity": 50
   },
   {
@@ -14,7 +14,7 @@
     "name": "Cappuccino",
     "category": "Beverage",
     "price": 4.5,
-    "image": "images/coffee.svg",
+    "image": "images/uploads/asano.jpg",
     "quantity": 45
   },
   {
@@ -23,7 +23,7 @@
     "name": "Latte",
     "category": "Beverage",
     "price": 4.75,
-    "image": "images/coffee.svg",
+    "image": "images/uploads/asano.jpg",
     "quantity": 40
   },
   {
@@ -59,7 +59,7 @@
     "name": "Cold Brew",
     "category": "Beverage",
     "price": 4.0,
-    "image": "images/coffee.svg",
+    "image": "images/uploads/asano.jpg",
     "quantity": 35
   },
   {
@@ -68,7 +68,7 @@
     "name": "Chai Latte",
     "category": "Beverage",
     "price": 4.65,
-    "image": "images/coffee.svg",
+    "image": "images/uploads/asano.jpg",
     "quantity": 20
   },
   {
@@ -89,4 +89,4 @@
     "image": "images/food.svg",
     "quantity": 12
   }
-]
+]*/

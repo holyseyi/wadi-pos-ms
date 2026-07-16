@@ -577,6 +577,11 @@ button.danger:hover {
   height: 190px;
   transition: box-shadow 0.2s;
 }
+
+#admin-product-list > .admin-product-card{
+  width:450px;
+}
+
 .product-card,
 .admin-product-card {
   display: grid;
@@ -619,6 +624,7 @@ button.danger:hover {
 .admin-name {
   font-weight: 700;
   color: #0f172a;
+  font-size:small;
 }
 
 .product-category,
@@ -1535,6 +1541,11 @@ button.danger:hover {
 /* Large desktops (>=1440px): give content more room and restructure the
    product panels / cart so they look intentional on wide screens.
    Covers 1440 x 1124 and 2560 x 1873. */
+@media (min-width: 1024px){
+  .products-panel{
+    width:100%;
+  }
+}
 @media (min-width: 1440px) {
   .app-shell,
   .login-screen,
@@ -1553,7 +1564,10 @@ button.danger:hover {
     grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
     gap: 28px;
   }
-
+  .products-panel{
+    width:700px
+  }
+  
   .products-panel,
   .cart-panel {
     min-height: 560px;
@@ -1562,9 +1576,16 @@ button.danger:hover {
 
   .product-list,
   .admin-product-list {
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
     gap: 20px;
-    height: 620px;
+    
+  }
+
+  #admin-product-list > .admin-product-card {
+    width: 400px;
+    margin: 0px;
+    padding-left:10px;
+    height: stretch;
   }
 
   .product-card,

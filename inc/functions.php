@@ -149,14 +149,14 @@ function get_default_products(): array {
     }
 
     return [
-        ['code' => '1001', 'name' => 'Espresso', 'category' => 'Beverage', 'price' => 3.5, 'image' => 'images/coffee.svg', 'quantity' => 50],
-        ['code' => '1002', 'name' => 'Cappuccino', 'category' => 'Beverage', 'price' => 4.5, 'image' => 'images/coffee.svg', 'quantity' => 45],
-        ['code' => '1003', 'name' => 'Latte', 'category' => 'Beverage', 'price' => 4.75, 'image' => 'images/coffee.svg', 'quantity' => 40],
+        ['code' => '1001', 'name' => 'Espresso', 'category' => 'Beverage', 'price' => 3.5, 'image' => 'images/uploads/asano.jpg', 'quantity' => 50],
+        ['code' => '1002', 'name' => 'Cappuccino', 'category' => 'Beverage', 'price' => 4.5, 'image' => 'images/uploads/asano.jpg', 'quantity' => 45],
+        ['code' => '1003', 'name' => 'Latte', 'category' => 'Beverage', 'price' => 4.75, 'image' => 'images/uploads/asano.jpg', 'quantity' => 40],
         ['code' => '2001', 'name' => 'Blueberry Muffin', 'category' => 'Bakery', 'price' => 2.95, 'image' => 'images/bakery.svg', 'quantity' => 25],
         ['code' => '2002', 'name' => 'Breakfast Sandwich', 'category' => 'Food', 'price' => 6.25, 'image' => 'images/food.svg', 'quantity' => 15],
         ['code' => '2003', 'name' => 'Bagel', 'category' => 'Bakery', 'price' => 2.75, 'image' => 'images/bakery.svg', 'quantity' => 30],
-        ['code' => '1004', 'name' => 'Cold Brew', 'category' => 'Beverage', 'price' => 4.0, 'image' => 'images/coffee.svg', 'quantity' => 35],
-        ['code' => '1005', 'name' => 'Chai Latte', 'category' => 'Beverage', 'price' => 4.65, 'image' => 'images/coffee.svg', 'quantity' => 20],
+        ['code' => '1004', 'name' => 'Cold Brew', 'category' => 'Beverage', 'price' => 4.0, 'image' => 'images/uploads/asano.jpg', 'quantity' => 35],
+        ['code' => '1005', 'name' => 'Chai Latte', 'category' => 'Beverage', 'price' => 4.65, 'image' => 'images/uploads/asano.jpg', 'quantity' => 20],
         ['code' => '2004', 'name' => 'Croissant', 'category' => 'Bakery', 'price' => 3.25, 'image' => 'images/bakery.svg', 'quantity' => 28],
         ['code' => '2005', 'name' => 'Avocado Toast', 'category' => 'Food', 'price' => 7.5, 'image' => 'images/food.svg', 'quantity' => 12],
     ];
@@ -228,7 +228,7 @@ function store_uploaded_image(array $file): ?string {
 
 function get_image_options(): array {
     $options = [
-        'images/coffee.svg' => 'Coffee',
+        'images/uploads/asano.jpg' => 'Coffee',
         'images/bakery.svg' => 'Bakery',
         'images/food.svg' => 'Food',
         'images/barcode.svg' => 'Barcode',

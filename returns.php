@@ -140,6 +140,11 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
         <?php endforeach; ?>
       </div>
     <?php endif; ?>
+          <div class="actions">
+      <a href="sales.php" class="secondary">← Back to Sales Register</a>
+      <button class="print-btn" onclick="window.print()">Print Report</button>
+    </div>
   </div>
+
 </body>
 </html>

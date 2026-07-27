@@ -98,7 +98,10 @@ if ($user['role'] === 'admin') {
             <div class="receipt-card">
               <div class="receipt-header">
                 <div>
-                  <div class="receipt-id">Receipt #<?php echo htmlspecialchars(str_pad((string)$receipt['order_id'], 8, '0', STR_PAD_LEFT)); ?></div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <img src="images/pos-icon.svg" alt="<?php echo htmlspecialchars($posName); ?> logo" style="width:32px;height:32px;object-fit:contain;" />
+                    <div class="receipt-id">Receipt #<?php echo htmlspecialchars(str_pad((string)$receipt['order_id'], 8, '0', STR_PAD_LEFT)); ?></div>
+                  </div>
                   <div class="receipt-meta">
                     By: <?php echo htmlspecialchars($receipt['username']); ?> | 
                     <?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($receipt['created_at']))); ?>

@@ -44,11 +44,38 @@ if ($user['role'] === 'admin') {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><?php echo htmlspecialchars($posName); ?> - Receipts</title>
-  <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="receipts-container">
+  <div class="app-shell">
+    <header class="header">
+      <div class="brand">
+        <img class="brand-icon" src="<?php echo htmlspecialchars(get_trademark_src()); ?>" alt="Trademark" />
+        <div>
+          <h1><?php echo htmlspecialchars($posName); ?></h1>
+          <p class="subtitle">Secure sales register for your team.</p>
+        </div>
+      </div>
+
+      <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="header-actions">
+        <span></span><span></span><span></span>
+      </button>
+
+      <div class="header-actions" id="header-actions">
+        <a href="returns.php" class="secondary">All sales</a>
+        <a href="sales_report.php" class="secondary">Sales reports</a>
+        <a href="credit_sales.php" class="secondary">Credit sales</a>
+        <a href="balance_sheet.php" class="secondary">Balance sheet</a>
+        <?php if ($user['role'] === 'admin'): ?>
+          <a href="admin.php" class="secondary">Admin dashboard</a>
+        <?php endif; ?>
+        <a href="logout.php" class="tertiary">Logout</a>
+      </div>
+    </header>
+
+    <main class="main-grid">
+      <div class="receipts-container">
     <a href="sales.php" class="back-link">← Back to Sales Register</a>
 
     <?php if (isset($error) && $error !== ''): ?>
@@ -99,7 +126,7 @@ if ($user['role'] === 'admin') {
               <div class="receipt-header">
                 <div>
                   <div style="display:flex;align-items:center;gap:10px;">
-                    <img src="images/pos-icon.svg" alt="<?php echo htmlspecialchars($posName); ?> logo" style="width:32px;height:32px;object-fit:contain;" />
+                    <img src="<?php echo htmlspecialchars(get_trademark_src()); ?>" alt="<?php echo htmlspecialchars($posName); ?> logo" style="width:32px;height:32px;object-fit:contain;" />
                     <div class="receipt-id">Receipt #<?php echo htmlspecialchars(str_pad((string)$receipt['order_id'], 8, '0', STR_PAD_LEFT)); ?></div>
                   </div>
                   <div class="receipt-meta">
@@ -123,6 +150,7 @@ if ($user['role'] === 'admin') {
         </div>
       <?php endif; ?>
     <?php endif; ?>
+    </main>
   </div>
 </body>
 </html>

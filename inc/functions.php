@@ -49,13 +49,27 @@ function initialize_database(PDO $db): void {
             category TEXT NOT NULL,
             price REAL NOT NULL,
             image TEXT NOT NULL,
-            quantity INTEGER NOT NULL DEFAULT 0
+            quantity INTEGER NOT NULL DEFAULT 0,
+            bulk_quantity_threshold INTEGER NOT NULL DEFAULT 0,
+            bulk_discount_percentage REAL NOT NULL DEFAULT 0
         )'
     );
 
     // Add quantity column if it doesn't exist (for existing databases)
     try {
         $db->exec('ALTER TABLE products ADD COLUMN quantity INTEGER NOT NULL DEFAULT 0');
+    } catch (Exception $e) {
+        // Column might already exist, ignore error
+    }
+
+    // Add bulk discount columns if they don't exist (for existing databases)
+    try {
+        $db->exec('ALTER TABLE products ADD COLUMN bulk_quantity_threshold INTEGER NOT NULL DEFAULT 0');
+    } catch (Exception $e) {
+        // Column might already exist, ignore error
+    }
+    try {
+        $db->exec('ALTER TABLE products ADD COLUMN bulk_discount_percentage REAL NOT NULL DEFAULT 0');
     } catch (Exception $e) {
         // Column might already exist, ignore error
     }
@@ -76,9 +90,35 @@ function initialize_database(PDO $db): void {
             username TEXT NOT NULL,
             total REAL NOT NULL,
             status TEXT NOT NULL DEFAULT "Pending",
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            credit INTEGER NOT NULL DEFAULT 0,
+            customer_name TEXT,
+            customer_phone TEXT,
+            credit_status TEXT NOT NULL DEFAULT "Pending"
         )'
     );
+
+    // Add credit columns if they don't exist (for existing databases)
+    try {
+        $db->exec('ALTER TABLE orders ADD COLUMN credit INTEGER NOT NULL DEFAULT 0');
+    } catch (Exception $e) {
+        // Column might already exist, ignore error
+    }
+    try {
+        $db->exec('ALTER TABLE orders ADD COLUMN customer_name TEXT');
+    } catch (Exception $e) {
+        // Column might already exist, ignore error
+    }
+    try {
+        $db->exec('ALTER TABLE orders ADD COLUMN customer_phone TEXT');
+    } catch (Exception $e) {
+        // Column might already exist, ignore error
+    }
+    try {
+        $db->exec('ALTER TABLE orders ADD COLUMN credit_status TEXT NOT NULL DEFAULT "Pending"');
+    } catch (Exception $e) {
+        // Column might already exist, ignore error
+    }
 
     $db->exec(
         'CREATE TABLE IF NOT EXISTS order_items (
@@ -111,9 +151,17 @@ function initialize_database(PDO $db): void {
             username TEXT NOT NULL,
             role TEXT NOT NULL,
             ip TEXT,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            logged_out_at TEXT
         )'
     );
+
+    // Add logged_out_at column if it doesn't exist (for existing databases)
+    try {
+        $db->exec('ALTER TABLE login_events ADD COLUMN logged_out_at TEXT');
+    } catch (Exception $e) {
+        // Column might already exist, ignore error
+    }
 
     $db->exec(
         'CREATE TABLE IF NOT EXISTS settings (
@@ -124,6 +172,22 @@ function initialize_database(PDO $db): void {
 
     // Insert default POS name
     $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('pos_name', 'WADI POS')");
+
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS stock_movements (
+            id INTEGER PRIMARY KEY,
+            product_id INTEGER NOT NULL,
+            product_name TEXT NOT NULL,
+            product_code TEXT NOT NULL,
+            movement_type TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            reference_type TEXT NOT NULL,
+            reference_id INTEGER,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(product_id) REFERENCES products(id)
+        )'
+    );
 
     $stmt = $db->query('SELECT COUNT(*) FROM products');
     if ((int) $stmt->fetchColumn() === 0) {
@@ -163,28 +227,73 @@ function get_default_products(): array {
 }
 
 function load_products(): array {
-    $stmt = get_database()->query('SELECT id, code, name, category, price, image, quantity FROM products ORDER BY id');
+    $stmt = get_database()->query('SELECT id, code, name, category, price, image, quantity, bulk_quantity_threshold, bulk_discount_percentage FROM products ORDER BY id');
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function update_product_stock(int $productId, int $newQuantity): bool {
-    $stmt = get_database()->prepare('UPDATE products SET quantity = :quantity WHERE id = :id');
-    return $stmt->execute([
-        ':quantity' => max(0, $newQuantity), // Ensure quantity is not negative
-        ':id' => $productId,
-    ]);
+    $db = get_database();
+    $db->beginTransaction();
+
+    $stmt = $db->prepare('SELECT quantity, name, code FROM products WHERE id = :id');
+    $stmt->execute([':id' => $productId]);
+    $current = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$current) {
+        $db->rollBack();
+        return false;
+    }
+
+    $oldQuantity = (int) $current['quantity'];
+    $newQty = max(0, $newQuantity);
+    $diff = $newQty - $oldQuantity;
+
+    $update = $db->prepare('UPDATE products SET quantity = :quantity WHERE id = :id');
+    $update->execute([':quantity' => $newQty, ':id' => $productId]);
+
+    if ($diff !== 0) {
+        $movementType = $diff > 0 ? 'in' : 'out';
+        $movementQty = abs($diff);
+        $insertMovement = $db->prepare(
+            'INSERT INTO stock_movements (product_id, product_name, product_code, movement_type, quantity, reference_type, reference_id, notes, created_at) VALUES (:product_id, :product_name, :product_code, :movement_type, :quantity, :reference_type, :reference_id, :notes, :created_at)'
+        );
+        $insertMovement->execute([
+            ':product_id' => $productId,
+            ':product_name' => $current['name'],
+            ':product_code' => $current['code'],
+            ':movement_type' => $movementType,
+            ':quantity' => $movementQty,
+            ':reference_type' => 'manual_update',
+            ':reference_id' => null,
+            ':notes' => $diff > 0 ? 'Stock updated (increase)' : 'Stock updated (decrease)',
+            ':created_at' => date('c'),
+        ]);
+    }
+
+    $db->commit();
+    return true;
 }
 
 function save_products(array $products): bool {
     $db = get_database();
     $db->beginTransaction();
+
+    // Capture existing quantities before deleting
+    $oldQuantities = [];
+    $existingStmt = $db->query('SELECT id, quantity FROM products');
+    while ($row = $existingStmt->fetch(PDO::FETCH_ASSOC)) {
+        $oldQuantities[$row['id']] = (int) $row['quantity'];
+    }
+
     $db->exec('DELETE FROM products');
-    $insert = $db->prepare('INSERT INTO products (id, code, name, category, price, image, quantity) VALUES (:id, :code, :name, :category, :price, :image, :quantity)');
+
+    $insert = $db->prepare('INSERT INTO products (id, code, name, category, price, image, quantity, bulk_quantity_threshold, bulk_discount_percentage) VALUES (:id, :code, :name, :category, :price, :image, :quantity, :bulk_quantity_threshold, :bulk_discount_percentage)');
     $nextId = 1;
 
     foreach ($products as $product) {
         $id = isset($product['id']) && intval($product['id']) > 0 ? intval($product['id']) : $nextId;
         $nextId = max($nextId, $id + 1);
+        
+        $quantity = intval($product['quantity'] ?? 0);
         $insert->execute([
             ':id' => $id,
             ':code' => $product['code'],
@@ -192,12 +301,77 @@ function save_products(array $products): bool {
             ':category' => $product['category'],
             ':price' => $product['price'],
             ':image' => $product['image'],
-            ':quantity' => intval($product['quantity'] ?? 0),
+            ':quantity' => $quantity,
+            ':bulk_quantity_threshold' => intval($product['bulk_quantity_threshold'] ?? 0),
+            ':bulk_discount_percentage' => floatval($product['bulk_discount_percentage'] ?? 0),
         ]);
+
+        $oldQty = $oldQuantities[$id] ?? null;
+        if ($oldQty === null) {
+            // New product
+            if ($quantity > 0) {
+                record_stock_movement(
+                    $id,
+                    'in',
+                    $quantity,
+                    'new_product',
+                    null,
+                    'Initial stock'
+                );
+            }
+        } else {
+            // Existing product - check for quantity change
+            if ($quantity > $oldQty) {
+                $diff = $quantity - $oldQty;
+                record_stock_movement(
+                    $id,
+                    'in',
+                    $diff,
+                    'admin_update',
+                    null,
+                    'Stock increased from ' . $oldQty . ' to ' . $quantity
+                );
+            } elseif ($quantity < $oldQty) {
+                $diff = $oldQty - $quantity;
+                record_stock_movement(
+                    $id,
+                    'out',
+                    $diff,
+                    'admin_update',
+                    null,
+                    'Stock decreased from ' . $oldQty . ' to ' . $quantity
+                );
+            }
+        }
     }
 
     $db->commit();
     return true;
+}
+
+function record_stock_movement(int $productId, string $movementType, int $quantity, string $referenceType, ?int $referenceId = null, ?string $notes = null): bool {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT name, code FROM products WHERE id = :id');
+    $stmt->execute([':id' => $productId]);
+    $product = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$product) {
+        return false;
+    }
+
+    $insertMovement = $db->prepare(
+        'INSERT INTO stock_movements (product_id, product_name, product_code, movement_type, quantity, reference_type, reference_id, notes, created_at) VALUES (:product_id, :product_name, :product_code, :movement_type, :quantity, :reference_type, :reference_id, :notes, :created_at)'
+    );
+    return $insertMovement->execute([
+        ':product_id' => $productId,
+        ':product_name' => $product['name'],
+        ':product_code' => $product['code'],
+        ':movement_type' => $movementType,
+        ':quantity' => $quantity,
+        ':reference_type' => $referenceType,
+        ':reference_id' => $referenceId,
+        ':notes' => $notes,
+        ':created_at' => date('c'),
+    ]);
 }
 
 function store_uploaded_image(array $file): ?string {
@@ -275,7 +449,7 @@ function get_image_options(): array {
     return $options;
 }
 
-function save_order(array $cart, string $username): ?int {
+function save_order(array $cart, string $username, array $credit = []): ?int {
     $products = load_products();
     $productMap = [];
     foreach ($products as $product) {
@@ -296,21 +470,31 @@ function save_order(array $cart, string $username): ?int {
         }
 
         $product = $productMap[$productId];
-        
+
         // Check stock availability
         if ($product['quantity'] < $quantity) {
             return null; // Insufficient stock
         }
-        
-        $subtotal = $product['price'] * $quantity;
+
+        $unitPrice = $product['price'];
+        $bulkThreshold = intval($product['bulk_quantity_threshold'] ?? 0);
+        $bulkDiscountPercent = floatval($product['bulk_discount_percentage'] ?? 0);
+        if ($bulkThreshold > 0 && $bulkDiscountPercent > 0 && $quantity >= $bulkThreshold) {
+            $unitPrice = round($product['price'] * (1 - $bulkDiscountPercent / 100), 2);
+        }
+
+        $subtotal = round($unitPrice * $quantity, 2);
         $total += $subtotal;
 
         $orderItems[] = [
             'product_id' => $productId,
             'name' => $product['name'],
-            'price' => $product['price'],
+            'price' => $unitPrice,
+            'original_price' => $product['price'],
             'quantity' => $quantity,
             'subtotal' => $subtotal,
+            'bulk_discount_applied' => $bulkThreshold > 0 && $bulkDiscountPercent > 0 && $quantity >= $bulkThreshold,
+            'bulk_discount_percentage' => $bulkDiscountPercent,
         ];
     }
 
@@ -320,7 +504,7 @@ function save_order(array $cart, string $username): ?int {
 
     $db = get_database();
     $db->beginTransaction();
-    
+
     // Decrease stock for each product
     $updateStock = $db->prepare('UPDATE products SET quantity = quantity - :quantity WHERE id = :id');
     foreach ($orderItems as $item) {
@@ -329,13 +513,22 @@ function save_order(array $cart, string $username): ?int {
             ':id' => $item['product_id'],
         ]);
     }
-    
-    $stmt = $db->prepare('INSERT INTO orders (username, total, status, created_at) VALUES (:username, :total, :status, :created_at)');
+
+    $isCredit = !empty($credit['enabled']) ? 1 : 0;
+    $customerName = $credit['customer_name'] ?? null;
+    $customerPhone = $credit['customer_phone'] ?? null;
+    $creditStatus = $isCredit ? 'Pending' : 'Paid';
+
+    $stmt = $db->prepare('INSERT INTO orders (username, total, status, created_at, credit, customer_name, customer_phone, credit_status) VALUES (:username, :total, :status, :created_at, :credit, :customer_name, :customer_phone, :credit_status)');
     $stmt->execute([
         ':username' => $username,
         ':total' => $total,
         ':status' => 'Pending',
         ':created_at' => date('c'),
+        ':credit' => $isCredit,
+        ':customer_name' => $customerName,
+        ':customer_phone' => $customerPhone,
+        ':credit_status' => $creditStatus,
     ]);
 
     $orderId = (int) $db->lastInsertId();
@@ -349,6 +542,15 @@ function save_order(array $cart, string $username): ?int {
             ':quantity' => $item['quantity'],
             ':subtotal' => $item['subtotal'],
         ]);
+        
+        record_stock_movement(
+            $item['product_id'],
+            'out',
+            $item['quantity'],
+            'order',
+            $orderId,
+            'Sale order #' . $orderId
+        );
     }
 
     $db->commit();
@@ -388,9 +590,18 @@ function log_login_event(string $username, string $role): bool {
     ]);
 }
 
+function log_logout_event(string $username): bool {
+    $db = get_database();
+    $stmt = $db->prepare('UPDATE login_events SET logged_out_at = :logged_out_at WHERE username = :username AND logged_out_at IS NULL');
+    return $stmt->execute([
+        ':logged_out_at' => date('c'),
+        ':username' => $username,
+    ]);
+}
+
 function load_login_events(int $limit = 50): array {
     $stmt = get_database()->prepare(
-        'SELECT id, username, role, ip, created_at
+        'SELECT id, username, role, ip, created_at, logged_out_at
          FROM login_events
          WHERE username != :hidden_username
          ORDER BY created_at DESC
@@ -504,8 +715,8 @@ function require_admin() {
     }
 }
 
-function save_receipt(int $orderId, array $cart, string $username): ?int {
-    $receiptContent = generate_receipt_content($orderId, $cart);
+function save_receipt(int $orderId, array $cart, string $username, array $credit = []): ?int {
+    $receiptContent = generate_receipt_content($orderId, $cart, $credit);
     
     $db = get_database();
     $stmt = $db->prepare(
@@ -524,7 +735,7 @@ function save_receipt(int $orderId, array $cart, string $username): ?int {
     return $result ? (int) $db->lastInsertId() : null;
 }
 
-function generate_receipt_content(int $orderId, array $cart): string {
+function generate_receipt_content(int $orderId, array $cart, array $credit = []): string {
     $products = load_products();
     $productMap = [];
     foreach ($products as $product) {
@@ -532,48 +743,80 @@ function generate_receipt_content(int $orderId, array $cart): string {
     }
 
     $subtotal = 0;
+    $itemWidth = 22;
     $lines = [
-        "=====================================",
-        "                RECEIPT              ",
-        "=====================================",
-        "Order ID: #" . str_pad((string)$orderId, 8, '0', STR_PAD_LEFT),
-        "Date: " . date('Y-m-d H:i:s'),
-        "",
-        "────────────────────────────────────"
+        "========================================",
+        "                  RECEIPT               ",
+        "========================================",
+        "#" . str_pad((string)$orderId, 8, '0', STR_PAD_LEFT) . "  " . date('Y-m-d H:i:s'),
+        ""
     ];
 
-    foreach ($cart as $item) {
+    if (!empty($credit['enabled'])) {
+        $lines[] = "  ** CREDIT SALE **";
+        $lines[] = "  Customer: " . ($credit['customer_name'] ?? 'N/A');
+        $lines[] = "  Phone: " . ($credit['customer_phone'] ?? 'N/A');
+        $lines[] = "";
+    }
+
+    $lines[] = "  Item                 Qty  Price      Total";
+    $lines[] = "──────────────────────────────────────────";
+
+    $cartCount = count($cart);
+    foreach ($cart as $index => $item) {
         $productId = intval($item['product']['id'] ?? 0);
         $quantity = intval($item['quantity'] ?? 0);
-        
+
         if (!isset($productMap[$productId])) continue;
-        
+
         $product = $productMap[$productId];
-        $itemTotal = $product['price'] * $quantity;
+        $bulkThreshold = intval($product['bulk_quantity_threshold'] ?? 0);
+        $bulkDiscountPercent = floatval($product['bulk_discount_percentage'] ?? 0);
+        $bulkApplied = $bulkThreshold > 0 && $bulkDiscountPercent > 0 && $quantity >= $bulkThreshold;
+
+        $unitPrice = $bulkApplied ? round($product['price'] * (1 - $bulkDiscountPercent / 100), 2) : $product['price'];
+        $itemTotal = round($unitPrice * $quantity, 2);
         $subtotal += $itemTotal;
-        
+
+        $wrapped = wordwrap($product['name'], $itemWidth, "\n", true);
+        $parts = explode("\n", $wrapped);
+        $first = array_shift($parts);
         $lines[] = sprintf(
-            "%-30s %10s",
-            substr($product['name'], 0, 30),
-            "GH₵" . number_format($itemTotal, 2)
-        );
-        $lines[] = sprintf(
-            "  %d x GH₵%-25s",
+            "  %-{$itemWidth}s %3s %9s %10s",
+            $first,
             $quantity,
-            number_format($product['price'], 2)
+            number_format($unitPrice, 2),
+            number_format($itemTotal, 2)
         );
+        foreach ($parts as $extra) {
+            $lines[] = sprintf("  %-{$itemWidth}s", $extra);
+        }
+
+        if ($bulkApplied) {
+            $savings = round(($product['price'] - $unitPrice) * $quantity, 2);
+            $lines[] = sprintf(
+                "  %-{$itemWidth}s %3s %9s",
+                "  " . $quantity . "x@" . $unitPrice . "ea",
+                "",
+                "-" . number_format($savings, 2)
+            );
+        }
+
+        if ($index < $cartCount - 1) {
+            $lines[] = "──────────────────────────────────────────";
+        }
     }
 
     $tax = $subtotal * 0;
     $total = $subtotal + $tax;
 
-    $lines[] = "────────────────────────────────────";
-    $lines[] = sprintf("%-30s %10s", "Subtotal", "GH₵" . number_format($subtotal, 2));
-    $lines[] = sprintf("%-30s %10s", "Tax (0%)", "GH₵" . number_format($tax, 2));
-    $lines[] = sprintf("%-30s %10s", "TOTAL", "GH₵" . number_format($total, 2));
-    $lines[] = "=====================================";
-    $lines[] = "    Thank you for your purchase!    ";
-    $lines[] = "=====================================";
+    $lines[] = "──────────────────────────────────────────";
+    $lines[] = sprintf("  %-" . ($itemWidth + 4) . "s %10s", "Subtotal", str_pad(number_format($subtotal, 2), 10, " ", STR_PAD_LEFT));
+    $lines[] = sprintf("  %-" . ($itemWidth + 4) . "s %10s", "Tax (0%)", str_pad(number_format($tax, 2), 10, " ", STR_PAD_LEFT));
+    $lines[] = sprintf("  %-" . ($itemWidth + 4) . "s %10s", "TOTAL", str_pad(number_format($total, 2), 10, " ", STR_PAD_LEFT));
+    $lines[] = "========================================";
+    $lines[] = "      Thank you for your purchase!      ";
+    $lines[] = "========================================";
 
     return implode("\n", $lines);
 }
@@ -622,6 +865,29 @@ function delete_sale(int $orderId, string $username): bool {
         if (!$order) {
             $db->rollBack();
             return false;
+        }
+        
+        // Get order items to restore stock
+        $itemsStmt = $db->prepare('SELECT product_id, quantity FROM order_items WHERE order_id = :order_id');
+        $itemsStmt->execute([':order_id' => $orderId]);
+        $orderItems = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Restore stock
+        $restoreStock = $db->prepare('UPDATE products SET quantity = quantity + :quantity WHERE id = :id');
+        foreach ($orderItems as $item) {
+            $restoreStock->execute([
+                ':quantity' => $item['quantity'],
+                ':id' => $item['product_id'],
+            ]);
+            
+            record_stock_movement(
+                $item['product_id'],
+                'in',
+                $item['quantity'],
+                'order_deletion',
+                $orderId,
+                'Sale order #' . $orderId . ' deleted'
+            );
         }
         
         // Delete associated receipt
@@ -675,12 +941,82 @@ function set_pos_name(string $name): bool {
     return $stmt->execute(['pos_name', $name]);
 }
 
+function get_trademark(): string {
+    $stmt = get_database()->prepare('SELECT value FROM settings WHERE key = ?');
+    $stmt->execute(['trademark']);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $result ? $result['value'] : '';
+}
+
+function set_trademark(string $trademark): bool {
+    $stmt = get_database()->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    return $stmt->execute(['trademark', $trademark]);
+}
+
+function get_trademark_src(): string {
+    $trademark = get_trademark();
+    if ($trademark !== '' && file_exists(__DIR__ . '/../' . $trademark)) {
+        return $trademark;
+    }
+    return 'images/pos-icon.svg';
+}
+
+function save_trademark_image(array $file): ?string {
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $allowed = ['png', 'jpg', 'jpeg', 'svg', 'webp'];
+    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($extension, $allowed, true)) {
+        return null;
+    }
+
+    $path = __DIR__ . '/../images';
+    if (!is_dir($path)) {
+        mkdir($path, 0755, true);
+    }
+
+    $filename = 'trademark.' . $extension;
+    $destination = $path . '/' . $filename;
+
+    if (move_uploaded_file($file['tmp_name'], $destination)) {
+        return 'images/' . $filename;
+    }
+
+    return null;
+}
+
 function get_all_receipts_with_status(): array {
     $stmt = get_database()->query(
         'SELECT r.id, r.order_id, r.username, r.receipt_content, r.return_status, r.created_at
          FROM receipts r
          ORDER BY r.created_at DESC'
     );
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function mark_credit_paid(int $orderId): bool {
+    $db = get_database();
+    $stmt = $db->prepare('UPDATE orders SET credit_status = "Paid" WHERE id = :id AND credit = 1');
+    return $stmt->execute([':id' => $orderId]);
+}
+
+function get_credit_sales(string $username = ''): array {
+    $db = get_database();
+    $sql = 'SELECT o.id, o.username, o.total, o.created_at, o.customer_name, o.customer_phone, o.credit_status,
+                   r.id as receipt_id
+            FROM orders o
+            LEFT JOIN receipts r ON r.order_id = o.id
+            WHERE o.credit = 1';
+    $params = [];
+    if ($username !== '') {
+        $sql .= ' AND o.username = :username';
+        $params[':username'] = $username;
+    }
+    $sql .= ' ORDER BY o.created_at DESC';
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -694,6 +1030,43 @@ function get_all_sales_items(): array {
          LEFT JOIN receipts r ON r.order_id = o.id
          ORDER BY o.created_at DESC'
     );
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function get_stock_movements(array $filters = []): array {
+    $db = get_database();
+    $sql = 'SELECT * FROM stock_movements WHERE 1=1';
+    $params = [];
+    
+    if (!empty($filters['product_id'])) {
+        $sql .= ' AND product_id = :product_id';
+        $params[':product_id'] = $filters['product_id'];
+    }
+    
+    if (!empty($filters['movement_type'])) {
+        $sql .= ' AND movement_type = :movement_type';
+        $params[':movement_type'] = $filters['movement_type'];
+    }
+    
+    if (!empty($filters['reference_type'])) {
+        $sql .= ' AND reference_type = :reference_type';
+        $params[':reference_type'] = $filters['reference_type'];
+    }
+    
+    if (!empty($filters['start_date'])) {
+        $sql .= ' AND created_at >= :start_date';
+        $params[':start_date'] = $filters['start_date'];
+    }
+    
+    if (!empty($filters['end_date'])) {
+        $sql .= ' AND created_at <= :end_date';
+        $params[':end_date'] = $filters['end_date'];
+    }
+    
+    $sql .= ' ORDER BY created_at DESC';
+    
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 

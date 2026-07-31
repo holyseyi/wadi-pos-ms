@@ -39,7 +39,7 @@ if ($user['role'] !== 'admin' && $receipt['username'] !== $user['username']) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><?php echo htmlspecialchars($posName); ?> - Receipt #<?php echo str_pad((string)$receipt['order_id'], 8, '0', STR_PAD_LEFT); ?></title>
-  <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <style>
     * {
       box-sizing: border-box;
@@ -53,7 +53,7 @@ if ($user['role'] !== 'admin' && $receipt['username'] !== $user['username']) {
       justify-content: center;
     }
     .print-container {
-      width: 320px;
+      width: 280px;
       max-width: 100%;
       margin: 0 auto;
       background: white;
@@ -140,7 +140,7 @@ if ($user['role'] !== 'admin' && $receipt['username'] !== $user['username']) {
 <body>
   <div class="print-container">
     <div class="receipt-brand">
-      <img src="images/pos-icon.svg" alt="<?php echo htmlspecialchars($posName); ?> logo" />
+      <img src="<?php echo htmlspecialchars(get_trademark_src()); ?>" alt="<?php echo htmlspecialchars($posName); ?> logo" />
       <div class="brand-name"><?php echo htmlspecialchars($posName); ?></div>
     </div>
     <div class="receipt-content"><?php echo htmlspecialchars($receiptContent); ?></div>

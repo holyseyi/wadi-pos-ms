@@ -6,6 +6,7 @@ require_admin();
 
 try {
     $posName = get_pos_name();
+    $trademark = get_trademark();
     $products = load_products();
     $imageOptions = get_image_options();
     $receipts = load_receipts();
@@ -27,6 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $category = trim($_POST['category'] ?? '');
         $price = floatval($_POST['price'] ?? 0);
         $quantity = intval($_POST['quantity'] ?? 0);
+        $bulkQuantityThreshold = intval($_POST['bulk_quantity_threshold'] ?? 0);
+        $bulkDiscountPercentage = floatval($_POST['bulk_discount_percentage'] ?? 0);
         $code = trim($_POST['code'] ?? '');
         $imageMenu = trim($_POST['image_menu'] ?? '');
         $existingImage = trim($_POST['existing_image'] ?? 'images/uploads/asano.jpg');
@@ -64,6 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $product['category'] = $category;
                             $product['price'] = $price;
                             $product['quantity'] = $quantity;
+                            $product['bulk_quantity_threshold'] = $bulkQuantityThreshold;
+                            $product['bulk_discount_percentage'] = $bulkDiscountPercentage;
                             $product['code'] = $code;
                             $product['image'] = $image;
                             break;
@@ -82,6 +87,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'category' => $category,
                         'price' => $price,
                         'quantity' => $quantity,
+                        'bulk_quantity_threshold' => $bulkQuantityThreshold,
+                        'bulk_discount_percentage' => $bulkDiscountPercentage,
                         'image' => $image,
                     ];
                 }
@@ -178,6 +185,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'POS name cannot be empty.';
         }
     }
+
+    if ($action === 'update_trademark') {
+        if (isset($_FILES['trademark_image']) && $_FILES['trademark_image']['error'] === UPLOAD_ERR_OK) {
+            $uploaded = save_trademark_image($_FILES['trademark_image']);
+            if ($uploaded !== null) {
+                set_trademark($uploaded);
+                $message = 'Trademark image updated successfully.';
+            } else {
+                $error = 'Uploaded image is not valid. Use PNG, JPG, SVG or WebP.';
+            }
+        } else {
+            $error = 'Please select an image to upload.';
+        }
+    }
 }
 
 if (isset($_GET['edit'])) {
@@ -198,14 +219,14 @@ $success = isset($_GET['success']);
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><?php echo htmlspecialchars($posName); ?> - Admin Dashboard</title>
-  <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-page="admin">
   <div class="app-shell">
     <header class="header">
       <div class="brand">
-        <img class="brand-icon" src="images/pos-icon.svg" alt="POS icon" />
+        <img class="brand-icon" src="<?php echo htmlspecialchars(get_trademark_src()); ?>" alt="Trademark" />
         <div>
           <h1><?php echo htmlspecialchars($posName); ?></h1>
           <p class="subtitle">Admin dashboard for product management.</p>
@@ -218,6 +239,8 @@ $success = isset($_GET['success']);
       <div class="header-actions" id="header-actions">
         <a href="returns.php" class="secondary">All sales</a>
         <a href="sales_report.php" class="secondary">Sales reports</a>
+        <a href="credit_sales.php" class="secondary">Credit sales</a>
+        <a href="balance_sheet.php" class="secondary">Balance sheet</a>
         <a href="sales.php" class="secondary">Sales register</a>
         <a href="logout.php" class="tertiary">Logout</a>
       </div>
@@ -257,40 +280,67 @@ $success = isset($_GET['success']);
         <form id="product-form" class="admin-form" method="post" action="admin.php" enctype="multipart/form-data">
           <input type="hidden" name="action" value="save_product" />
           <input type="hidden" name="product_id" value="<?php echo htmlspecialchars($editProduct['id'] ?? ''); ?>" />
-          <div class="field-grid">
-            <label class="input-group">
-              Name
-              <input id="product-name" name="name" type="text" required value="<?php echo htmlspecialchars($editProduct['name'] ?? ''); ?>" />
-            </label>
-            <label class="input-group">
-              Category
-              <input id="product-category" name="category" type="text" required value="<?php echo htmlspecialchars($editProduct['category'] ?? ''); ?>" />
-            </label>
-            <label class="input-group">
-              Price
-              <input id="product-price" name="price" type="number" min="0.01" step="0.01" required value="<?php echo htmlspecialchars($editProduct['price'] ?? ''); ?>" />
-            </label>
-            <label class="input-group">
-              Stock Quantity
-              <input id="product-quantity" name="quantity" type="number" min="0" required value="<?php echo htmlspecialchars($editProduct['quantity'] ?? '0'); ?>" />
-            </label>
-            <label class="input-group">
-              Barcode
-              <input id="product-code" name="code" type="text" required value="<?php echo htmlspecialchars($editProduct['code'] ?? ''); ?>" />
-            </label>
-            <label class="input-group">
-              Image
-<div class="image-picker" data-image-options='<?php echo json_encode($imageOptions); ?>'>
+
+          <div class="form-section">
+            <div class="section-title">Basic Information</div>
+            <div class="field-grid">
+              <label class="input-group">
+                <span class="field-label">Product Name</span>
+                <input id="product-name" name="name" type="text" required value="<?php echo htmlspecialchars($editProduct['name'] ?? ''); ?>" placeholder="Enter product name" />
+              </label>
+              <label class="input-group">
+                <span class="field-label">Category</span>
+                <input id="product-category" name="category" type="text" required value="<?php echo htmlspecialchars($editProduct['category'] ?? ''); ?>" placeholder="e.g., Electronics" />
+              </label>
+              <label class="input-group">
+                <span class="field-label">Price (GH₵)</span>
+                <input id="product-price" name="price" type="number" min="0.01" step="0.01" required value="<?php echo htmlspecialchars($editProduct['price'] ?? ''); ?>" placeholder="0.00" />
+              </label>
+              <label class="input-group">
+                <span class="field-label">Barcode</span>
+                <input id="product-code" name="code" type="text" required value="<?php echo htmlspecialchars($editProduct['code'] ?? ''); ?>" placeholder="Product code" />
+              </label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="section-title">Inventory & Pricing</div>
+            <div class="field-grid">
+              <label class="input-group">
+                <span class="field-label">Stock Quantity</span>
+                <input id="product-quantity" name="quantity" type="number" min="0" required value="<?php echo htmlspecialchars($editProduct['quantity'] ?? '0'); ?>" placeholder="0" />
+              </label>
+              <label class="input-group">
+                <span class="field-label">Bulk Discount Threshold (qty)</span>
+                <input id="product-bulk-quantity" name="bulk_quantity_threshold" type="number" min="0" value="<?php echo htmlspecialchars($editProduct['bulk_quantity_threshold'] ?? '0'); ?>" placeholder="0" />
+                <span class="field-hint">Minimum quantity to trigger bulk discount</span>
+              </label>
+              <label class="input-group">
+                <span class="field-label">Bulk Discount Percentage (%)</span>
+                <input id="product-bulk-discount" name="bulk_discount_percentage" type="number" min="0" max="100" step="0.01" value="<?php echo htmlspecialchars($editProduct['bulk_discount_percentage'] ?? '0'); ?>" placeholder="0" />
+                <span class="field-hint">Discount applied when threshold is met</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="section-title">Product Image</div>
+            <div class="image-section">
+              <div class="upload-section">
+                <label class="input-group">
+                  <span class="field-label">Upload new image</span>
+                  <input id="product-image-file" name="image_file" type="file" accept=".png,.jpg,.jpeg,.svg" />
+                </label>
+                <input type="hidden" name="existing_image" value="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/uploads/asano.jpg'); ?>" />
+              </div>
+              <div class="image-picker" data-image-options='<?php echo json_encode($imageOptions); ?>'>
                 <input type="hidden" id="product-image-menu" name="image_menu" value="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/uploads/asano.jpg'); ?>" />
                 <div id="image-thumbnails" class="image-thumbnails"></div>
-                <img id="image-preview" src="<?php echo htmlspecialchars(product_image_src($editProduct['image'] ?? 'images/uploads/asano.jpg')); ?>" alt="Product preview" class="image-preview-large" />
+                <div class="image-preview-wrapper">
+                  <img id="image-preview" src="<?php echo htmlspecialchars(product_image_src($editProduct['image'] ?? 'images/uploads/asano.jpg')); ?>" alt="Product preview" class="image-preview-large" />
+                </div>
               </div>
-            </label>
-            <label class="input-group">
-              Upload image
-              <input id="product-image-file" name="image_file" type="file" accept=".png,.jpg,.jpeg,.svg" />
-            </label>
-            <input type="hidden" name="existing_image" value="<?php echo htmlspecialchars($editProduct['image'] ?? 'images/uploads/asano.jpg'); ?>" />
+            </div>
           </div>
 
           <div class="form-actions">
@@ -315,10 +365,13 @@ $success = isset($_GET['success']);
                   <div class="admin-stock <?php echo ($product['quantity'] <= 0) ? 'out-of-stock' : 'in-stock'; ?>">
                     Stock: <?php echo htmlspecialchars($product['quantity']); ?> 
                     <?php if ($product['quantity'] <= 0): ?><span class="stock-warning">(Out of stock)</span><?php endif; ?>
+                    <?php if (!empty($product['bulk_quantity_threshold']) && !empty($product['bulk_discount_percentage'])): ?>
+                      <span class="bulk-discount-badge">Bulk: <?php echo htmlspecialchars($product['bulk_quantity_threshold']); ?>+ @ <?php echo htmlspecialchars($product['bulk_discount_percentage']); ?>% off</span>
+                    <?php endif; ?>
                     <form method="post" action="admin.php" class="stock-update-form">
                       <input type="hidden" name="action" value="update_stock" />
                       <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>" />
-<input type="number" name="quantity" value="<?php echo htmlspecialchars($product['quantity']); ?>" min="0" class="stock-input" />
+ <input type="number" name="quantity" value="<?php echo htmlspecialchars($product['quantity']); ?>" min="0" class="stock-input" />
                       <button type="submit" class="stock-update-btn">Update</button>
                     </form>
                   </div>
@@ -471,17 +524,41 @@ $success = isset($_GET['success']);
         <?php else: ?>
           <div class="history-list">
             <?php foreach ($loginEvents as $event): ?>
+              <?php
+                $loginTime = date('Y-m-d H:i:s', strtotime($event['created_at']));
+                $logoutTime = !empty($event['logged_out_at']) ? date('Y-m-d H:i:s', strtotime($event['logged_out_at'])) : null;
+                $statusClass = $logoutTime ? 'logged-out' : 'active';
+                $statusText = $logoutTime ? 'Logged out' : 'Active';
+              ?>
               <article class="history-card">
                 <div class="history-main">
                   <strong><?php echo htmlspecialchars($event['username']); ?></strong>
                   <span class="user-role <?php echo $event['role'] === 'admin' ? 'admin-role' : 'sales-role'; ?>">
                     <?php echo htmlspecialchars(ucfirst($event['role'])); ?>
                   </span>
+                  <span class="session-status <?php echo $statusClass; ?>"><?php echo $statusText; ?></span>
                 </div>
                 <div class="history-details">
-                  <span>Signed in at <?php echo htmlspecialchars(date('Y-m-d H:i:s', strtotime($event['created_at']))); ?></span>
+                  <div class="history-time">
+                    <span class="time-label">Signed in:</span>
+                    <span class="time-value"><?php echo htmlspecialchars($loginTime); ?></span>
+                  </div>
+                  <?php if ($logoutTime): ?>
+                    <div class="history-time">
+                      <span class="time-label">Signed out:</span>
+                      <span class="time-value"><?php echo htmlspecialchars($logoutTime); ?></span>
+                    </div>
+                  <?php else: ?>
+                    <div class="history-time history-active">
+                      <span class="time-label">Signed out:</span>
+                      <span class="time-value">Still active</span>
+                    </div>
+                  <?php endif; ?>
                   <?php if (!empty($event['ip'])): ?>
-                    <span> | IP: <?php echo htmlspecialchars($event['ip']); ?></span>
+                    <div class="history-ip">
+                      <span class="ip-label">IP:</span>
+                      <span class="ip-value"><?php echo htmlspecialchars($event['ip']); ?></span>
+                    </div>
                   <?php endif; ?>
                 </div>
               </article>
@@ -503,6 +580,17 @@ $success = isset($_GET['success']);
               <input type="text" id="pos_name" name="pos_name" value="<?php echo htmlspecialchars($posName); ?>" required />
             </div>
             <button type="submit" class="primary">Update Name</button>
+          </form>
+          <form method="post" action="admin.php" class="settings-form" style="margin-top:18px;" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="update_trademark" />
+            <div class="form-group">
+              <label for="trademark_image">Trademark Image (Logo)</label>
+              <input type="file" id="trademark_image" name="trademark_image" accept=".png,.jpg,.jpeg,.svg,.webp" required />
+              <?php if ($trademark): ?>
+                <p class="login-hint">Current: <img src="<?php echo htmlspecialchars(get_trademark_src()); ?>" alt="Current trademark" style="height:40px;vertical-align:middle;" /></p>
+              <?php endif; ?>
+            </div>
+            <button type="submit" class="primary">Upload Trademark</button>
           </form>
         </div>
       </section>

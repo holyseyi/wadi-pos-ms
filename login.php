@@ -33,7 +33,7 @@ $posName = get_pos_name();
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><?php echo htmlspecialchars($posName); ?> - Login</title>
-  <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>

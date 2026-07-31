@@ -4,6 +4,21 @@ require_login();
 
 $user = current_user();
 $posName = get_pos_name();
+$message = '';
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $user['role'] === 'admin') {
+    $action = $_POST['action'] ?? '';
+    if ($action === 'mark_credit_paid') {
+        $orderId = intval($_POST['order_id'] ?? 0);
+        if ($orderId > 0 && mark_credit_paid($orderId)) {
+            $message = 'Credit order marked as paid.';
+        } else {
+            $error = 'Failed to update credit status.';
+        }
+    }
+}
+
 $allReceipts = get_all_receipts_with_status();
 
 // Extract items from receipts
@@ -12,7 +27,8 @@ foreach ($allReceipts as $receipt) {
     $db = get_database();
     $stmt = $db->prepare(
         'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
-                o.username, o.total, o.created_at, r.return_status, r.id as receipt_id
+                o.username, o.total, o.created_at, r.return_status, r.id as receipt_id,
+                o.credit, o.customer_name, o.customer_phone, o.credit_status
          FROM order_items oi
          JOIN orders o ON o.id = oi.order_id
          JOIN receipts r ON r.order_id = o.id
@@ -37,6 +53,10 @@ foreach ($allItems as $item) {
             'created_at' => $item['created_at'],
             'return_status' => $item['return_status'],
             'receipt_id' => $item['receipt_id'],
+            'credit' => $item['credit'] ?? 0,
+            'customer_name' => $item['customer_name'] ?? '',
+            'customer_phone' => $item['customer_phone'] ?? '',
+            'credit_status' => $item['credit_status'] ?? 'Paid',
             'items' => []
         ];
     }
@@ -53,10 +73,37 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><?php echo htmlspecialchars($posName); ?> - All Sales & Returns</title>
   <link rel="stylesheet" href="styles.css" />
-  <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
 </head>
 <body>
-  <div class="report-container returns-container">
+  <div class="app-shell">
+    <header class="header">
+      <div class="brand">
+        <img class="brand-icon" src="<?php echo htmlspecialchars(get_trademark_src()); ?>" alt="Trademark" />
+        <div>
+          <h1><?php echo htmlspecialchars($posName); ?></h1>
+          <p class="subtitle">Secure sales register for your team.</p>
+        </div>
+      </div>
+
+      <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="header-actions">
+        <span></span><span></span><span></span>
+      </button>
+
+      <div class="header-actions" id="header-actions">
+        <a href="returns.php" class="secondary">All sales</a>
+        <a href="sales_report.php" class="secondary">Sales reports</a>
+        <a href="credit_sales.php" class="secondary">Credit sales</a>
+        <a href="balance_sheet.php" class="secondary">Balance sheet</a>
+        <?php if ($user['role'] === 'admin'): ?>
+          <a href="admin.php" class="secondary">Admin dashboard</a>
+        <?php endif; ?>
+        <a href="logout.php" class="tertiary">Logout</a>
+      </div>
+    </header>
+
+    <main class="main-grid">
+      <div class="report-container returns-container">
     <div class="report-header">
       <h1 class="report-title">All Sales & Returns</h1>
       <div class="report-meta">
@@ -69,6 +116,13 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
         <?php endif; ?>
       </div>
     </div>
+
+    <?php if ($message): ?>
+      <p class="login-hint text-success"><?php echo htmlspecialchars($message); ?></p>
+    <?php endif; ?>
+    <?php if ($error): ?>
+      <p class="error-text"><?php echo htmlspecialchars($error); ?></p>
+    <?php endif; ?>
 
     <?php
     $totalSales = count($groupedSales);
@@ -117,6 +171,23 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
                 <div class="order-meta">
                   Sales Rep: <?php echo htmlspecialchars($order['username']); ?> |
                   Date: <?php echo htmlspecialchars(date('M j, Y g:i A', strtotime($order['created_at']))); ?>
+                  <?php if ($order['credit']): ?>
+                    | <span class="credit-badge">Credit Sale</span>
+                    <span class="credit-status <?php echo strtolower($order['credit_status']); ?>"><?php echo htmlspecialchars($order['credit_status']); ?></span>
+                    <?php if (!empty($order['customer_name'])): ?>
+                      | Customer: <?php echo htmlspecialchars($order['customer_name']); ?>
+                    <?php endif; ?>
+                    <?php if (!empty($order['customer_phone'])): ?>
+                      | <?php echo htmlspecialchars($order['customer_phone']); ?>
+                    <?php endif; ?>
+                    <?php if ($user['role'] === 'admin' && $order['credit_status'] === 'Pending'): ?>
+                      <form method="post" action="returns.php" class="inline-form" style="margin-left:8px;">
+                        <input type="hidden" name="action" value="mark_credit_paid" />
+                        <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>" />
+                        <button type="submit" class="tertiary" style="font-size:0.78rem;padding:6px 10px;">Mark as Paid</button>
+                      </form>
+                    <?php endif; ?>
+                  <?php endif; ?>
                 </div>
               </div>
               <div class="order-total <?php echo $order['return_status'] === 'Returned' ? 'returned' : 'active'; ?>">
@@ -144,6 +215,7 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
       <a href="sales.php" class="secondary">← Back to Sales Register</a>
       <button class="print-btn" onclick="window.print()">Print Report</button>
     </div>
+    </main>
   </div>
 
 </body>

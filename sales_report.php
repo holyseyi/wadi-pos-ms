@@ -7,7 +7,7 @@ $posName = get_pos_name();
 
 // Get period from URL parameter
 $period = $_GET['period'] ?? 'day';
-$periods = ['day' => 'Today', 'week' => 'This Week', 'month' => 'This Month', 'all' => 'All Time'];
+$periods = ['day' => 'Today', 'yesterday' => 'Yesterday', 'week' => 'This Week', 'month' => 'This Month', 'all' => 'All Time'];
 
 if (!isset($periods[$period])) {
     $period = 'day';
@@ -22,6 +22,10 @@ switch ($period) {
     case 'day':
         $startDate->setTime(0, 0, 0);
         $endDate->setTime(23, 59, 59);
+        break;
+    case 'yesterday':
+        $startDate->modify('yesterday')->setTime(0, 0, 0);
+        $endDate->modify('yesterday')->setTime(23, 59, 59);
         break;
     case 'week':
         $startDate->modify('monday this week')->setTime(0, 0, 0);
@@ -127,7 +131,7 @@ $netRevenue = $totalRevenue - $returnedRevenue;
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><?php echo htmlspecialchars($posName); ?> - Sales Report - <?php echo $periods[$period]; ?></title>
-  <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <style>
     * {
       box-sizing: border-box;
@@ -301,7 +305,34 @@ $netRevenue = $totalRevenue - $returnedRevenue;
   </style>
 </head>
 <body>
-  <div class="report-container">
+  <div class="app-shell">
+    <header class="header">
+      <div class="brand">
+        <img class="brand-icon" src="<?php echo htmlspecialchars(get_trademark_src()); ?>" alt="Trademark" />
+        <div>
+          <h1><?php echo htmlspecialchars($posName); ?></h1>
+          <p class="subtitle">Secure sales register for your team.</p>
+        </div>
+      </div>
+
+      <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="header-actions">
+        <span></span><span></span><span></span>
+      </button>
+
+      <div class="header-actions" id="header-actions">
+        <a href="returns.php" class="secondary">All sales</a>
+        <a href="sales_report.php" class="secondary">Sales reports</a>
+        <a href="credit_sales.php" class="secondary">Credit sales</a>
+        <a href="balance_sheet.php" class="secondary">Balance sheet</a>
+        <?php if ($user['role'] === 'admin'): ?>
+          <a href="admin.php" class="secondary">Admin dashboard</a>
+        <?php endif; ?>
+        <a href="logout.php" class="tertiary">Logout</a>
+      </div>
+    </header>
+
+    <main class="main-grid">
+      <div class="report-container">
     <div class="report-header">
       <h1 class="report-title">Sales Report</h1>
       <div class="report-meta">
@@ -322,6 +353,7 @@ $netRevenue = $totalRevenue - $returnedRevenue;
 
     <div class="period-selector">
       <a href="?period=day" class="<?php echo $period === 'day' ? 'active' : ''; ?>">Today</a>
+      <a href="?period=yesterday" class="<?php echo $period === 'yesterday' ? 'active' : ''; ?>">Yesterday</a>
       <a href="?period=week" class="<?php echo $period === 'week' ? 'active' : ''; ?>">This Week</a>
       <a href="?period=month" class="<?php echo $period === 'month' ? 'active' : ''; ?>">This Month</a>
       <a href="?period=all" class="<?php echo $period === 'all' ? 'active' : ''; ?>">All Time</a>
@@ -386,8 +418,8 @@ $netRevenue = $totalRevenue - $returnedRevenue;
       <button class="print-btn" onclick="window.print()">Print Report</button>
       <button onclick="window.history.back()">Back</button>
     </div>
-
-
+    </main>
   </div>
+
 </body>
 </html>

@@ -1,21 +1,26 @@
-kind: wasmer.io/App.v0
 name: DZIEPOS
 app_id: da_R36ILtlUZJXE
 owner: holyseyi
 package: .
+env:
+  PHPIX_PHP_THREADS: '4'
 scaling:
   mode: single_concurrency
+kind: wasmer.io/App.v0
 annotations:
+  anybuild.run/config:
+    name: out
+    phpix: true
+  anybuild.run/provider: php
+  anybuild.run/version: 0.25.0
   shipitcli.com/config:
     commands: {}
+    name: out
     php_version: 8.3.29
     phpix: true
     phpix_worker_threads: 4
     port: 8080
     use_composer: false
-    name: out
   shipitcli.com/provider: php
   shipitcli.com/version: 0.22.2
   wasmer.io/version: 7.2.1
-env:
-  PHPIX_PHP_THREADS: '4'

@@ -23,11 +23,29 @@ const elements = {
   total: document.getElementById("total"),
   receiptOutput: document.getElementById("receipt-output"),
   clearCartButton: document.getElementById("clear-cart"),
-  checkoutButton: document.getElementById("checkout-button")
+  checkoutButton: document.getElementById("checkout-button"),
+  creditEnabled: document.getElementById("credit-enabled"),
+  creditCustomerName: document.getElementById("credit-customer-name"),
+  creditCustomerPhone: document.getElementById("credit-customer-phone"),
+  creditFields: document.getElementById("credit-fields")
 };
 
 function formatMoney(value) {
   return `GH₵${value.toFixed(2)}`;
+}
+
+function roundTo(value, decimals) {
+  const factor = Math.pow(10, decimals);
+  return Math.round(value * factor) / factor;
+}
+
+function getBulkUnitPrice(product, quantity) {
+  const threshold = parseInt(product.bulk_quantity_threshold, 10) || 0;
+  const discount = parseFloat(product.bulk_discount_percentage) || 0;
+  if (threshold > 0 && discount > 0 && quantity >= threshold) {
+    return roundTo(product.price * (1 - discount / 100), 2);
+  }
+  return product.price;
 }
 
 function getCartItem(productId) {
@@ -68,7 +86,10 @@ function clearCart() {
 }
 
 function computeTotals() {
-  const subtotal = state.cart.reduce((sum, entry) => sum + entry.product.price * entry.quantity, 0);
+  const subtotal = state.cart.reduce((sum, entry) => {
+    const unitPrice = getBulkUnitPrice(entry.product, entry.quantity);
+    return sum + unitPrice * entry.quantity;
+  }, 0);
   const tax = subtotal * 0;
   const total = subtotal + tax;
   return { subtotal, tax, total };
@@ -99,7 +120,16 @@ function renderProducts() {
       const stockClass = product.quantity <= 0 ? 'out-of-stock' : 'in-stock';
       const buttonDisabled = isOutOfStock ? 'disabled' : '';
       const buttonClass = isOutOfStock ? 'secondary' : 'primary';
-      
+
+      const bulkThreshold = parseInt(product.bulk_quantity_threshold, 10) || 0;
+      const bulkDiscountPercent = parseFloat(product.bulk_discount_percentage) || 0;
+      const bulkBadge = (bulkThreshold > 0 && bulkDiscountPercent > 0)
+        ? `<div class="bulk-discount-badge">Bulk: ${bulkThreshold}+ @ ${bulkDiscountPercent}% off</div>`
+        : '';
+      const discountedPrice = (bulkThreshold > 0 && bulkDiscountPercent > 0)
+        ? formatMoney(roundTo(product.price * (1 - bulkDiscountPercent / 100), 2))
+        : formatMoney(product.price);
+
       return `
       <article class="product-card ${isOutOfStock ? 'out-of-stock' : ''}">
         <img src="${product.image}" alt="${product.name}" />
@@ -107,6 +137,8 @@ function renderProducts() {
           <div class="product-name">${product.name}</div>
           <div class="product-category">${product.category} • Code ${product.code}</div>
           <div class="product-price">${formatMoney(product.price)}</div>
+          ${bulkBadge}
+          <div class="product-bulk-price">Bulk unit price: ${discountedPrice}</div>
           <div class="product-stock ${stockClass}">${stockText}</div>
         </div>
         <div class="product-actions">
@@ -130,18 +162,25 @@ function renderCart() {
   }
 
   elements.cartItems.innerHTML = state.cart
-    .map((entry) => `
+    .map((entry) => {
+      const unitPrice = getBulkUnitPrice(entry.product, entry.quantity);
+      const threshold = parseInt(entry.product.bulk_quantity_threshold, 10) || 0;
+      const discount = parseFloat(entry.product.bulk_discount_percentage) || 0;
+      const bulkApplied = threshold > 0 && discount > 0 && entry.quantity >= threshold;
+      const metaSuffix = bulkApplied ? ` <span class="bulk-applied">(${discount}% off)</span>` : '';
+      return `
       <article class="cart-item">
         <div class="cart-info">
           <div class="cart-name">${entry.product.name}</div>
-          <div class="cart-meta">${entry.quantity} × ${formatMoney(entry.product.price)}</div>
+          <div class="cart-meta">${entry.quantity} × ${formatMoney(unitPrice)}${metaSuffix}</div>
         </div>
         <div class="cart-actions-row">
           <button class="tertiary" data-action="decrease" data-id="${entry.product.id}">−</button>
           <button class="tertiary" data-action="increase" data-id="${entry.product.id}">+</button>
           <button class="secondary" data-action="remove" data-id="${entry.product.id}">Remove</button>
         </div>
-      </article>`)
+      </article>`
+    })
     .join("");
 
   const totals = computeTotals();
@@ -150,25 +189,63 @@ function renderCart() {
   elements.total.textContent = formatMoney(totals.total);
 }
 
-function createReceipt(orderId) {
+function createReceipt(orderId, credit) {
   if (state.cart.length === 0) {
     return "Your cart is empty. Add items before checking out.";
   }
 
   const totals = computeTotals();
+  const itemWidth = 22;
   const lines = [
-    "=== Receipt ===",
-    `Order ID: ${orderId}`,
-    `Date: ${new Date().toLocaleString()}`,
-    "",
-    ...state.cart.map((entry) => `${entry.quantity} × ${entry.product.name} @ ${formatMoney(entry.product.price)} = ${formatMoney(entry.product.price * entry.quantity)}`),
-    "",
-    `Subtotal: ${formatMoney(totals.subtotal)}`,
-    `Tax (0%): ${formatMoney(totals.tax)}`,
-    `Total: ${formatMoney(totals.total)}`,
-    "",
-    "Thank you for your purchase!"
+    "========================================",
+    "                  RECEIPT               ",
+    "========================================",
+    `#${String(orderId).padStart(8, '0')}  ${new Date().toLocaleString()}`,
+    ""
   ];
+
+  if (credit && credit.enabled) {
+    lines.push("  ** CREDIT SALE **");
+    lines.push("  Customer: " + (credit.customer_name || 'N/A'));
+    lines.push("  Phone: " + (credit.customer_phone || 'N/A'));
+    lines.push("");
+  }
+
+  lines.push("  Item                 Qty  Price      Total");
+  lines.push("──────────────────────────────────────────");
+
+  for (let i = 0; i < state.cart.length; i++) {
+    const entry = state.cart[i];
+    const unitPrice = getBulkUnitPrice(entry.product, entry.quantity);
+    const threshold = parseInt(entry.product.bulk_quantity_threshold, 10) || 0;
+    const discount = parseFloat(entry.product.bulk_discount_percentage) || 0;
+    const bulkApplied = threshold > 0 && discount > 0 && entry.quantity >= threshold;
+    const itemTotal = roundTo(unitPrice * entry.quantity, 2);
+
+    const wrapped = entry.product.name.match(/.{1,22}/g) || [];
+    lines.push(`  ${wrapped[0].padEnd(22)} ${String(entry.quantity).padStart(3)} ${formatMoney(unitPrice).slice(2).padStart(9)} ${formatMoney(itemTotal).slice(2).padStart(10)}`);
+    
+    for (let j = 1; j < wrapped.length; j++) {
+      lines.push(`  ${wrapped[j].padEnd(22)}`);
+    }
+
+    if (bulkApplied) {
+      const savings = roundTo((entry.product.price - unitPrice) * entry.quantity, 2);
+      lines.push(`  ${(" " + entry.quantity + "@" + formatMoney(unitPrice).slice(2) + "ea").padEnd(22)} ${"".padStart(3)} ${("" + "-" + formatMoney(savings).slice(2)).padStart(9)}`);
+    }
+
+    if (i < state.cart.length - 1) {
+      lines.push("──────────────────────────────────────────");
+    }
+  }
+
+  lines.push("──────────────────────────────────────────");
+  lines.push(`  ${"Subtotal".padEnd(26)} ${formatMoney(totals.subtotal).slice(2).padStart(10)}`);
+  lines.push(`  ${"Tax (0%)".padEnd(26)} ${formatMoney(0).slice(2).padStart(10)}`);
+  lines.push(`  ${"TOTAL".padEnd(26)} ${formatMoney(totals.total).slice(2).padStart(10)}`);
+  lines.push("========================================");
+  lines.push("      Thank you for your purchase!      ");
+  lines.push("========================================");
 
   return lines.join("\n");
 }
@@ -277,12 +354,30 @@ async function checkoutOrder() {
     return;
   }
 
+  const creditEnabled = elements.creditEnabled ? elements.creditEnabled.checked : false;
+  const creditCustomerName = elements.creditCustomerName ? elements.creditCustomerName.value.trim() : '';
+  const creditCustomerPhone = elements.creditCustomerPhone ? elements.creditCustomerPhone.value.trim() : '';
+
+  if (creditEnabled && (!creditCustomerName || !creditCustomerPhone)) {
+    showBarcodeMessage("Please provide customer name and phone for credit sale.", "error");
+    return;
+  }
+
+  const payload = {
+    cart: state.cart,
+    credit: {
+      enabled: creditEnabled,
+      customer_name: creditCustomerName,
+      customer_phone: creditCustomerPhone
+    }
+  };
+
   const response = await fetch(checkoutEndpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ cart: state.cart })
+    body: JSON.stringify(payload)
   });
 
   const result = await response.json();
@@ -291,7 +386,14 @@ async function checkoutOrder() {
     return;
   }
 
+  const receipt = createReceipt(result.orderId, creditEnabled ? { enabled: creditEnabled, customer_name: creditCustomerName, customer_phone: creditCustomerPhone } : null);
+  console.log("Receipt:\n" + receipt);
+
   clearCart();
+  if (elements.creditCustomerName) elements.creditCustomerName.value = '';
+  if (elements.creditCustomerPhone) elements.creditCustomerPhone.value = '';
+  if (elements.creditEnabled) elements.creditEnabled.checked = false;
+  if (elements.creditFields) elements.creditFields.style.display = 'none';
   showBarcodeMessage(`Order ${result.orderId} stored successfully. Receipt saved to database.`, 'info');
 }
 
@@ -322,6 +424,16 @@ function initSalesPage() {
   elements.cartItems.addEventListener("click", handleCartClick);
   elements.checkoutButton.addEventListener("click", checkoutOrder);
   elements.clearCartButton.addEventListener("click", clearCart);
+
+  if (elements.creditEnabled) {
+    elements.creditEnabled.addEventListener("change", () => {
+      const show = elements.creditEnabled.checked;
+      if (elements.creditFields) {
+        elements.creditFields.style.display = show ? "block" : "none";
+      }
+    });
+  }
+
   elements.productSearch.addEventListener("input", (event) => {
     state.filter = event.target.value;
     renderProducts();

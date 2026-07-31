@@ -80,14 +80,14 @@ if ($user['role'] === 'admin') {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><?php echo htmlspecialchars($posName); ?> - Sales Register</title>
-  <link rel="icon" type="image/svg+xml" href="images/pos-icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-page="sales">
   <div class="app-shell">
     <header class="header">
       <div class="brand">
-        <img class="brand-icon" src="images/pos-icon.svg" alt="POS icon" />
+        <img class="brand-icon" src="<?php echo htmlspecialchars(get_trademark_src()); ?>" alt="Trademark" />
         <div>
           <h1><?php echo htmlspecialchars($posName); ?></h1>
           <p class="subtitle">Secure sales register for your team.</p>
@@ -99,11 +99,12 @@ if ($user['role'] === 'admin') {
       </button>
 
       <div class="header-actions" id="header-actions">
-        <a href="products_sold.php" class="secondary">View all products sold</a>
         <?php if ($user['role'] === 'admin'): ?>
         <a href="returns.php" class="secondary">All sales</a>
         <?php endif; ?>
         <a href="sales_report.php" class="secondary">Sales reports</a>
+        <a href="credit_sales.php" class="secondary">Credit sales</a>
+        <a href="balance_sheet.php" class="secondary">Balance sheet</a>
         <?php if ($user['role'] === 'admin'): ?>
           <a href="admin.php" class="secondary">Admin dashboard</a>
         <?php endif; ?>
@@ -177,9 +178,38 @@ if ($user['role'] === 'admin') {
       </div>
 
       <section class="panel sales-history-panel">
-        <div class="panel-header">
-          <h2><?php echo $user['role'] === 'admin' ? 'All Sales & Returns' : 'My Sales'; ?></h2>
-          <span class="hint"><?php echo $user['role'] === 'admin' ? 'Manage your sales and returns' : 'Manage your sales'; ?></span>
+        <div class="panel-header panel-header-row">
+          <div class="panel-header-left">
+            <h2><?php echo $user['role'] === 'admin' ? 'All Sales & Returns' : 'My Sales'; ?></h2>
+            <span class="hint"><?php echo $user['role'] === 'admin' ? 'Manage your sales and returns' : 'Manage your sales'; ?></span>
+          </div>
+          <div class="panel-header-right">
+            <label class="credit-toggle" title="Enable credit sale">
+              <input type="checkbox" id="credit-enabled" />
+              <span>Sale on credit</span>
+            </label>
+            <div class="receipt-actions">
+              <form method="post" action="sales.php">
+                <input type="hidden" name="action" value="print_current_receipt" />
+                <button type="submit" class="primary">Print Current Receipt</button>
+              </form>
+              <form method="post" action="sales.php">
+                <input type="hidden" name="action" value="view_current_receipt" />
+                <button type="submit" class="secondary">View Receipt</button>
+              </form>
+              <a href="receipts.php" class="secondary">View All Receipts</a>
+            </div>
+          </div>
+        </div>
+        <div id="credit-fields" class="credit-fields" style="display:none;">
+          <label class="input-group">
+            <span class="field-label">Customer Name</span>
+            <input type="text" id="credit-customer-name" placeholder="Full name" />
+          </label>
+          <label class="input-group">
+            <span class="field-label">Customer Phone</span>
+            <input type="tel" id="credit-customer-phone" placeholder="Phone number" />
+          </label>
         </div>
 
         <?php if ($message): ?>
@@ -188,19 +218,6 @@ if ($user['role'] === 'admin') {
         <?php if ($error): ?>
           <p class="error-text"><?php echo htmlspecialchars($error); ?></p>
         <?php endif; ?>
-
-        <div class="receipt-actions">
-          <form method="post" action="sales.php">
-            <input type="hidden" name="action" value="print_current_receipt" />
-            <button type="submit" class="primary">Print Current Receipt</button>
-          </form>
-          <form method="post" action="sales.php">
-            <input type="hidden" name="action" value="view_current_receipt" />
-            <button type="submit" class="secondary">View Receipt</button>
-          </form>
-          <a href="receipts.php" class="secondary">View All Receipts</a>
-        </div>
-      </section>
 
       <div id="camera-preview" class="camera-preview hidden">
         <video id="barcode-video" autoplay muted playsinline></video>

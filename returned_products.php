@@ -9,14 +9,7 @@ $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $user['role'] === 'admin') {
     $action = $_POST['action'] ?? '';
-    if ($action === 'mark_credit_paid') {
-        $orderId = intval($_POST['order_id'] ?? 0);
-        if ($orderId > 0 && mark_credit_paid($orderId)) {
-            $message = 'Credit order marked as paid.';
-        } else {
-            $error = 'Failed to update credit status.';
-        }
-    } elseif ($action === 'process_return') {
+    if ($action === 'process_return') {
         $orderId = intval($_POST['order_id'] ?? 0);
         $productId = intval($_POST['product_id'] ?? 0);
         $quantity = intval($_POST['quantity'] ?? 0);
@@ -34,78 +27,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $user['role'] === 'admin') {
     }
 }
 
-$allReceipts = get_all_receipts_with_status();
+$returnedReceipts = get_returned_receipts();
 
-// Extract items from receipts
-$allItems = [];
-foreach ($allReceipts as $receipt) {
+$orderIds = array_unique(array_column($returnedReceipts, 'order_id'));
+
+$groupedSales = [];
+foreach ($orderIds as $orderId) {
     $db = get_database();
     $stmt = $db->prepare(
         'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
-                o.username, o.total, o.created_at, r.return_status, r.id as receipt_id,
-                o.credit, o.customer_name, o.customer_phone, o.credit_status
+                o.username, o.total, o.created_at, o.credit, o.customer_name, o.customer_phone, o.credit_status,
+                r.return_status, r.id as receipt_id
          FROM order_items oi
          JOIN orders o ON o.id = oi.order_id
          JOIN receipts r ON r.order_id = o.id
-         WHERE r.id = :receipt_id'
+         WHERE r.return_status = "Returned" AND o.id = :order_id'
     );
-    $stmt->execute([':receipt_id' => $receipt['id']]);
+    $stmt->execute([':order_id' => $orderId]);
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($items as $item) {
-        $allItems[] = $item;
-    }
-}
-
-// Group by order
-$groupedSales = [];
-foreach ($allItems as $item) {
-    $orderId = $item['order_id'];
-    if (!isset($groupedSales[$orderId])) {
+    
+    if (!empty($items)) {
         $groupedSales[$orderId] = [
             'order_id' => $orderId,
-            'username' => $item['username'],
-            'total' => $item['total'],
-            'created_at' => $item['created_at'],
-            'return_status' => $item['return_status'],
-            'receipt_id' => $item['receipt_id'],
-            'credit' => $item['credit'] ?? 0,
-            'customer_name' => $item['customer_name'] ?? '',
-            'customer_phone' => $item['customer_phone'] ?? '',
-            'credit_status' => $item['credit_status'] ?? 'Paid',
-            'items' => []
+            'username' => $items[0]['username'],
+            'total' => $items[0]['total'],
+            'created_at' => $items[0]['created_at'],
+            'return_status' => 'Returned',
+            'receipt_id' => $items[0]['receipt_id'],
+            'credit' => $items[0]['credit'] ?? 0,
+            'customer_name' => $items[0]['customer_name'] ?? '',
+            'customer_phone' => $items[0]['customer_phone'] ?? '',
+            'credit_status' => $items[0]['credit_status'] ?? 'Paid',
+            'items' => $items
         ];
+        $groupedSales[$orderId]['return_summary'] = get_order_return_summary($orderId);
+        $groupedSales[$orderId]['return_history'] = get_returns_for_order($orderId);
     }
-    $groupedSales[$orderId]['items'][] = $item;
 }
 
-// Sort by date descending
 usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
-
-// Fetch return summaries and history for each order
-foreach ($groupedSales as $orderId => $order) {
-    $groupedSales[$orderId]['return_summary'] = get_order_return_summary($orderId);
-    $groupedSales[$orderId]['return_history'] = get_returns_for_order($orderId);
-}
-
-$productStock = [];
-foreach ($groupedSales as $order) {
-    foreach ($order['items'] as $item) {
-        $pid = $item['product_id'];
-        if (!isset($productStock[$pid])) {
-            $stmt = $db->prepare('SELECT quantity FROM products WHERE id = :id');
-            $stmt->execute([':id' => $pid]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            $productStock[$pid] = (int) ($row['quantity'] ?? 0);
-        }
-    }
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title><?php echo htmlspecialchars($posName); ?> - All Sales & Returns</title>
+  <title><?php echo htmlspecialchars($posName); ?> - Returned Products</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
 </head>
@@ -143,9 +110,9 @@ foreach ($groupedSales as $order) {
     <main class="main-grid">
       <div class="report-container returns-container">
     <div class="report-header">
-      <h1 class="report-title">All Sales & Returns</h1>
+      <h1 class="report-title">Returned Products</h1>
       <div class="report-meta">
-        <b>View:</b> All Sales Transactions<br>
+        <b>View:</b> Returned Sales Transactions<br>
         <b>Generated on:</b> <?php echo date('M j, Y g:i A'); ?><br>
         <?php if ($user['role'] === 'admin'): ?>
           <b>All Sales Representatives</b>
@@ -173,15 +140,15 @@ foreach ($groupedSales as $order) {
     ?>
     <div class="stats-grid">
       <div class="stat-item">
-        <div class="stat-label">Total Sales</div>
+        <div class="stat-label">Returned Orders</div>
         <div class="stat-value"><?php echo $totalSales; ?></div>
       </div>
       <div class="stat-item">
-        <div class="stat-label">Items Sold</div>
+        <div class="stat-label">Items Returned</div>
         <div class="stat-value"><?php echo $totalItems; ?></div>
       </div>
       <div class="stat-item">
-        <div class="stat-label">Gross Value</div>
+        <div class="stat-label">Total Value</div>
         <div class="stat-value">GH₵<?php echo number_format($totalValue, 2); ?></div>
       </div>
     </div>
@@ -192,19 +159,17 @@ foreach ($groupedSales as $order) {
     </div>
 
     <?php if (empty($groupedSales)): ?>
-      <p class="empty-message">No sales records found.</p>
+      <p class="empty-message">No returned products found.</p>
     <?php else: ?>
       <div class="returns-summary sales-list">
-        <h3>Sales Details</h3>
+        <h3>Returned Orders</h3>
         <?php foreach ($groupedSales as $order): ?>
-          <div class="return-order <?php echo $order['return_status'] === 'Returned' ? 'returned' : ''; ?>">
+          <div class="return-order returned">
             <div class="order-header">
               <div>
-                <div class="order-id <?php echo $order['return_status'] === 'Returned' ? 'returned' : ''; ?>">
+                <div class="order-id returned">
                   Order #<?php echo str_pad((string)$order['order_id'], 8, '0', STR_PAD_LEFT); ?>
-                  <span class="order-status <?php echo $order['return_status'] === 'Returned' ? 'returned' : 'active'; ?>">
-                    (<?php echo $order['return_status']; ?>)
-                  </span>
+                  <span class="order-status returned">(Returned)</span>
                 </div>
                 <div class="order-meta">
                   Sales Rep: <?php echo htmlspecialchars($order['username']); ?> |
@@ -218,17 +183,10 @@ foreach ($groupedSales as $order) {
                     <?php if (!empty($order['customer_phone'])): ?>
                       | <?php echo htmlspecialchars($order['customer_phone']); ?>
                     <?php endif; ?>
-                    <?php if ($user['role'] === 'admin' && $order['credit_status'] === 'Pending'): ?>
-                      <form method="post" action="returns.php" class="inline-form" style="margin-left:8px;">
-                        <input type="hidden" name="action" value="mark_credit_paid" />
-                        <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>" />
-                        <button type="submit" class="tertiary" style="font-size:0.78rem;padding:6px 10px;">Mark as Paid</button>
-                      </form>
-                    <?php endif; ?>
                   <?php endif; ?>
                 </div>
               </div>
-              <div class="order-total <?php echo $order['return_status'] === 'Returned' ? 'returned' : 'active'; ?>">
+              <div class="order-total returned">
                 GH₵<?php echo htmlspecialchars(number_format($order['total'], 2)); ?>
               </div>
             </div>
@@ -249,7 +207,6 @@ foreach ($groupedSales as $order) {
                     $returnedQty += $ret['quantity'];
                   }
                 }
-                $remainingQty = $item['quantity'] - $returnedQty;
               ?>
                 <div class="item-row" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                   <div class="item-details">
@@ -259,22 +216,8 @@ foreach ($groupedSales as $order) {
                       <div style="color:#d97706;font-size:0.8rem;font-weight:600;">Returned: <?php echo $returnedQty; ?> unit(s)</div>
                     <?php endif; ?>
                   </div>
-                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                    <div class="item-price <?php echo $order['return_status'] === 'Returned' ? 'returned' : ''; ?>">
-                      GH₵<?php echo htmlspecialchars(number_format($item['subtotal'], 2)); ?>
-                    </div>
-                     <?php if ($user['role'] === 'admin' && $remainingQty > 0 && ($productStock[$item['product_id']] ?? 0) > 0): ?>
-                       <form method="post" action="returns.php" class="inline-form" style="display:inline-flex;align-items:center;gap:6px;margin:0;">
-                         <input type="hidden" name="action" value="process_return" />
-                         <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>" />
-                         <input type="hidden" name="product_id" value="<?php echo $item['product_id']; ?>" />
-                         <input type="number" name="quantity" value="1" min="1" max="<?php echo min($remainingQty, $productStock[$item['product_id']] ?? 0); ?>" class="status-select" style="width:60px;padding:6px 8px;font-size:0.85rem;" />
-                         <input type="text" name="reason" placeholder="Reason" class="status-select" style="width:120px;padding:6px 8px;font-size:0.85rem;" />
-                         <button type="submit" class="danger" style="font-size:0.78rem;padding:6px 10px;">Return</button>
-                       </form>
-                     <?php elseif ($user['role'] === 'admin' && ($remainingQty <= 0 || ($productStock[$item['product_id']] ?? 0) <= 0)): ?>
-                       <span style="font-size:0.78rem;color:#6b7280;background:#e5e7eb;padding:4px 10px;border-radius:999px;">No more units available for return</span>
-                     <?php endif; ?>
+                  <div class="item-price returned">
+                    GH₵<?php echo htmlspecialchars(number_format($item['subtotal'], 2)); ?>
                   </div>
                 </div>
               <?php endforeach; ?>

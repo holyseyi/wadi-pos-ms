@@ -100,8 +100,8 @@ $stmt = $db->prepare($query);
 
 
 if ($period !== 'all') {
-    $stmt->bindValue(':start_date', $startDate->format('Y-m-d H:i:s'));
-    $stmt->bindValue(':end_date', $endDate->format('Y-m-d H:i:s'));
+    $stmt->bindValue(':start_date', $startDate->format('c'));
+    $stmt->bindValue(':end_date', $endDate->format('c'));
 }
 
 if ($user['role'] !== 'admin') {
@@ -156,177 +156,6 @@ $netRevenue = $totalRevenue - $returnedRevenue;
   <title><?php echo htmlspecialchars($posName); ?> - Sales Report - <?php echo $periods[$period]; ?></title>
   <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <link rel="stylesheet" href="styles.css" />
-  <style>
-    * {
-      box-sizing: border-box;
-    }
-    body {
-      font-family: 'Courier New', monospace;
-      margin: 0;
-      padding: 20px;
-      background: #f5f5f5;
-      color: #333;center
-    }
-    .report-container {
-      max-width: 800px;
-      margin: 0 auto;
-      background: white;
-      padding: 30px;
-      border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-    .report-header {
-      text-align: center;
-      border-bottom: 2px solid #333;
-      padding-bottom: 20px;
-      margin-bottom: 30px;
-    }
-    .report-title {
-      font-size: 14px;
-      font-weight: bold;
-      margin: 0;
-    }
-    .report-meta {
-      margin: 10px 0;
-      color: #666;
-      text-align:justify;
-    }
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      background: #f8f9fa;
-      border-radius: 8px;
-    }
-    .stat-item {
-      text-align: center;
-    }
-    .stat-label {
-      font-size: 12px;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .stat-value {
-      font-size: 14px;
-      font-weight: bold;
-      color: #2d8659;
-      margin-top: 5px;
-    }
-    .stat-value.negative {
-      color: #bf2d2d;
-    }
-    .sales-list {
-      margin-top: 30px;
-    }
-    .sale-item {
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 15px;
-      background: #fafafa;
-    }
-    .sale-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-    .sale-id {
-      font-weight: bold;
-      font-size: 13px;
-    }
-    .sale-meta {
-      font-size: 12px;
-      color: #666;
-    }
-    .sale-total {
-      font-size: 14px;
-      font-weight: bold;
-      color: #2d8659;
-    }
-    .sale-total.returned {
-      color: #bf2d2d;
-    }
-    .sale-items {
-      margin-top: 10px;
-    }
-    .item-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 5px 0;
-      border-bottom: 1px solid #eee;
-    }
-    .item-row:last-child {
-      border-bottom: none;
-    }
-    .item-name {
-      font-weight: 500;
-      font-size: 12px;
-    }
-    .item-price {
-      font-weight: bold;
-      font-size: 12px;
-    }
-    .actions {
-      text-align: end;
-      margin-top: 30px;
-      padding-top: 20px;
-      border-top: 1px solid #ddd;
-    }
-    button {
-      padding: 10px 20px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      background: #f9f9f9;
-      cursor: pointer;
-      font-size: 14px;
-      margin: 0 5px;
-    }
-    button:hover {
-      background: #f0f0f0;
-    }
-    button.print-btn {
-      background: #2d8659;
-      color: white;
-      border: none;
-    }
-    button.print-btn:hover {
-      background: #1f6041;
-    }
-    .period-selector {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    .period-selector a {
-      display: inline-block;
-      padding: 8px 16px;
-      margin: 0 5px;
-      text-decoration: none;
-      color: #666;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      background: #f9f9f9;
-    }
-    .period-selector a.active {
-      background: #2d8659;
-      color: white;
-      border-color: #2d8659;
-    }
-    @media print {
-      body {
-        padding: 0;
-        background: white;
-      }
-      .report-container {
-        padding: 20px;
-        box-shadow: none;
-        border-radius: 0;
-      }
-      .actions, .period-selector {
-        display: none;
-      }
-    }
-  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -344,7 +173,11 @@ $netRevenue = $totalRevenue - $returnedRevenue;
       </button>
 
       <div class="header-actions" id="header-actions">
+        <?php if ($user['role'] === 'admin'): ?>
         <a href="returns.php" class="secondary">All sales</a>
+        <a href="returned_products.php" class="secondary">Returned Products</a>
+        <?php endif; ?>
+        <a href="sales.php" class="secondary">Sales register</a>
         <a href="sales_report.php" class="secondary">Sales reports</a>
         <a href="credit_sales.php" class="secondary">Credit sales</a>
         <a href="balance_sheet.php" class="secondary">Balance sheet</a>

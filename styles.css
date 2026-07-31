@@ -212,6 +212,18 @@ button {
   font-size: 0.85rem;
 }
 
+.header-actions a[href="sales.php"] {
+  background-color: #001a4a;
+  color: #ffffff;
+  border-color: #001a4a;
+}
+
+.header-actions a[href="sales.php"]:hover {
+  background-color: #003080;
+  border-color: #003080;
+  color: #ffffff;
+}
+
 .header-actions a:hover,
 .back-link:hover {
   background-color: #e2e8f0;
@@ -392,14 +404,15 @@ button.secondary:hover {
 }
 
 button.tertiary {
-  background: transparent;
-  color: #001a4a;
-  border: 1px solid #bcd0e8;
-  width:fit-content;
+  background: #001a4a;
+  color: #ffffff;
+  border: 1px solid #001a4a;
 }
 
 button.tertiary:hover {
-  background: #eef2f8;
+  background: #003080;
+  border-color: #003080;
+  color: #ffffff;
 }
 
 button.print-btn {
@@ -1580,6 +1593,28 @@ button.danger:hover {
   color: #475569;
   line-height: 1.5;
   font-size: 0.75rem;
+}
+
+.period-selector {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.period-selector a {
+  display: inline-block;
+  padding: 8px 16px;
+  margin: 0 5px;
+  text-decoration: none;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.period-selector a.active {
+  background: #2d8659;
+  color: white;
+  border-color: #2d8659;
 }
 
 .stats-grid {

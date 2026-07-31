@@ -97,7 +97,11 @@ usort($groupedCredits, fn($a, $b) => strtotime($b['created_at']) - strtotime($a[
       </button>
 
       <div class="header-actions" id="header-actions">
+        <?php if ($user['role'] === 'admin'): ?>
         <a href="returns.php" class="secondary">All sales</a>
+        <a href="returned_products.php" class="secondary">Returned Products</a>
+        <?php endif; ?>
+        <a href="sales.php" class="secondary">Sales register</a>
         <a href="sales_report.php" class="secondary">Sales reports</a>
         <a href="credit_sales.php" class="secondary">Credit sales</a>
         <a href="balance_sheet.php" class="secondary">Balance sheet</a>

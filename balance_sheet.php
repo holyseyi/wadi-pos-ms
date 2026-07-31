@@ -66,8 +66,8 @@ if (!$useCustomRange) {
     }
 }
 
-$startDateStr = $startDate ? $startDate->format('Y-m-d H:i:s') : '';
-$endDateStr = $endDate ? $endDate->format('Y-m-d H:i:s') : '';
+$startDateStr = $startDate ? $startDate->format('c') : '';
+$endDateStr = $endDate ? $endDate->format('c') : '';
 
 // Get stock movements
 $stockMovements = get_stock_movements([
@@ -409,7 +409,11 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['pric
       </button>
 
       <div class="header-actions" id="header-actions">
+        <?php if ($user['role'] === 'admin'): ?>
         <a href="returns.php" class="secondary">All sales</a>
+        <a href="returned_products.php" class="secondary">Returned Products</a>
+        <?php endif; ?>
+        <a href="sales.php" class="secondary">Sales register</a>
         <a href="sales_report.php" class="secondary">Sales reports</a>
         <a href="credit_sales.php" class="secondary">Credit sales</a>
         <a href="balance_sheet.php" class="secondary">Balance sheet</a>

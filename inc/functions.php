@@ -1105,14 +1105,21 @@ function process_return(int $orderId, int $productId, int $quantity, string $rea
             return false;
         }
 
-        $newQuantity = (int) $product['quantity'] + $quantity;
+        $currentQty = (int) $product['quantity'];
+        if ($currentQty <= 0) {
+            $db->rollBack();
+            return false;
+        }
+
+        $quantityToDeduct = min($quantity, $currentQty);
+        $newQuantity = $currentQty - $quantityToDeduct;
         $update = $db->prepare('UPDATE products SET quantity = :quantity WHERE id = :id');
         $update->execute([':quantity' => $newQuantity, ':id' => $productId]);
 
         record_stock_movement(
             $productId,
             'in',
-            $quantity,
+            $quantityToDeduct,
             'return',
             $orderId,
             'Return: ' . ($reason ?: 'No reason provided')

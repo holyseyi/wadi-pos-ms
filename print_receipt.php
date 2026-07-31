@@ -144,7 +144,7 @@ if ($user['role'] !== 'admin' && $receipt['username'] !== $user['username']) {
       <div class="brand-name"><?php echo htmlspecialchars($posName); ?></div>
     </div>
     <div class="receipt-content"><?php echo htmlspecialchars($receiptContent); ?></div>
-    <div class="receipt-note">Products cannot be returned.</div>
+    <div class="receipt-note">Products may be returned with receipt.</div>
     <div class="print-actions">
       <button class="print-btn" onclick="window.print()">Print Receipt</button>
       <button onclick="window.history.back()">Back</button>

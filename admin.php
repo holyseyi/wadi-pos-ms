@@ -4,6 +4,8 @@ error_reporting(E_ALL);
 require_once __DIR__ . '/inc/functions.php';
 require_admin();
 
+$user = current_user();
+
 try {
     $posName = get_pos_name();
     $trademark = get_trademark();

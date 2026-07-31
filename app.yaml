@@ -1,4 +1,3 @@
-kind: wasmer.io/App.v0
 name: DZIEPOS
 app_id: da_R36ILtlUZJXE
 owner: holyseyi
@@ -7,6 +6,7 @@ env:
   PHPIX_PHP_THREADS: '4'
 scaling:
   mode: single_concurrency
+kind: wasmer.io/App.v0
 annotations:
   anybuild.run/config:
     name: out

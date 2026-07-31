@@ -193,7 +193,7 @@ usort($groupedCredits, fn($a, $b) => strtotime($b['created_at']) - strtotime($a[
                       | <?php echo htmlspecialchars($order['customer_phone']); ?>
                     <?php endif; ?>
                     <button type="button" class="tertiary" style="font-size:0.78rem;padding:6px 10px;margin-left:8px;"
-                      onclick="openPayModal(<?php echo $order['order_id']; ?>, '<?php echo htmlspecialchars(addslashes($order['customer_name'])); ?>', '<?php echo htmlspecialchars(addslashes($order['customer_phone'])); ?>', <?php echo htmlspecialchars(number_format($order['total'], 2)); ?>)">
+                      onclick="openPayModal(<?php echo $order['order_id']; ?>, '<?php echo htmlspecialchars(addslashes($order['customer_name'])); ?>', '<?php echo htmlspecialchars(addslashes($order['customer_phone'])); ?>', <?php echo htmlspecialchars(sprintf('%.2f', (float)$order['total'])); ?>)">
                       Pay
                     </button>
                   <?php else: ?>

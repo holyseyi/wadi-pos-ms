@@ -146,6 +146,19 @@ function initialize_database(PDO $db): void {
     );
 
     $db->exec(
+        'CREATE TABLE IF NOT EXISTS returns (
+            id INTEGER PRIMARY KEY,
+            order_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            quantity INTEGER NOT NULL,
+            reason TEXT,
+            processed_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(order_id) REFERENCES orders(id)
+        )'
+    );
+
+    $db->exec(
         'CREATE TABLE IF NOT EXISTS login_events (
             id INTEGER PRIMARY KEY,
             username TEXT NOT NULL,

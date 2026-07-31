@@ -7,39 +7,62 @@ $posName = get_pos_name();
 
 // Get period from URL parameter
 $period = $_GET['period'] ?? 'day';
-$periods = ['day' => 'Today', 'yesterday' => 'Yesterday', 'week' => 'This Week', 'month' => 'This Month', 'all' => 'All Time'];
+$periods = ['day' => 'Today', 'yesterday' => 'Yesterday', 'week' => 'This Week', 'month' => 'This Month', 'year' => 'This Year', 'all' => 'All Time', 'custom' => 'Custom Range'];
 
 if (!isset($periods[$period])) {
     $period = 'day';
 }
 
-// Calculate date range based on period
-$now = new DateTime();
-$startDate = clone $now;
-$endDate = clone $now;
+// Handle custom date range
+$customStart = $_GET['start'] ?? null;
+$customEnd = $_GET['end'] ?? null;
+$useCustomRange = false;
 
-switch ($period) {
-    case 'day':
-        $startDate->setTime(0, 0, 0);
-        $endDate->setTime(23, 59, 59);
-        break;
-    case 'yesterday':
-        $startDate->modify('yesterday')->setTime(0, 0, 0);
-        $endDate->modify('yesterday')->setTime(23, 59, 59);
-        break;
-    case 'week':
-        $startDate->modify('monday this week')->setTime(0, 0, 0);
-        $endDate->modify('sunday this week')->setTime(23, 59, 59);
-        break;
-    case 'month':
-        $startDate->modify('first day of this month')->setTime(0, 0, 0);
-        $endDate->modify('last day of this month')->setTime(23, 59, 59);
-        break;
-    case 'all':
-        // No date restrictions - all time
-        $startDate = null;
-        $endDate = null;
-        break;
+if ($period === 'custom' && $customStart && $customEnd) {
+    try {
+        $startDate = new DateTime($customStart);
+        $endDate = new DateTime($customEnd);
+        if ($startDate > $endDate) {
+            $useCustomRange = false;
+        } else {
+            $useCustomRange = true;
+        }
+    } catch (Exception $e) {
+        $useCustomRange = false;
+    }
+}
+
+if (!$useCustomRange) {
+    $now = new DateTime();
+    $startDate = clone $now;
+    $endDate = clone $now;
+
+    switch ($period) {
+        case 'day':
+            $startDate->setTime(0, 0, 0);
+            $endDate->setTime(23, 59, 59);
+            break;
+        case 'yesterday':
+            $startDate->modify('yesterday')->setTime(0, 0, 0);
+            $endDate->modify('yesterday')->setTime(23, 59, 59);
+            break;
+        case 'week':
+            $startDate->modify('monday this week')->setTime(0, 0, 0);
+            $endDate->modify('sunday this week')->setTime(23, 59, 59);
+            break;
+        case 'month':
+            $startDate->modify('first day of this month')->setTime(0, 0, 0);
+            $endDate->modify('last day of this month')->setTime(23, 59, 59);
+            break;
+        case 'year':
+            $startDate->modify('first day of January this year')->setTime(0, 0, 0);
+            $endDate->modify('last day of December this year')->setTime(23, 59, 59);
+            break;
+        case 'all':
+            $startDate = null;
+            $endDate = null;
+            break;
+    }
 }
 
 
@@ -77,8 +100,8 @@ $stmt = $db->prepare($query);
 
 
 if ($period !== 'all') {
-    $stmt->bindValue(':start_date', $startDate->format('c'));
-    $stmt->bindValue(':end_date', $endDate->format('c'));
+    $stmt->bindValue(':start_date', $startDate->format('Y-m-d H:i:s'));
+    $stmt->bindValue(':end_date', $endDate->format('Y-m-d H:i:s'));
 }
 
 if ($user['role'] !== 'admin') {
@@ -132,6 +155,7 @@ $netRevenue = $totalRevenue - $returnedRevenue;
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><?php echo htmlspecialchars($posName); ?> - Sales Report - <?php echo $periods[$period]; ?></title>
   <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
+  <link rel="stylesheet" href="styles.css" />
   <style>
     * {
       box-sizing: border-box;
@@ -158,7 +182,7 @@ $netRevenue = $totalRevenue - $returnedRevenue;
       margin-bottom: 30px;
     }
     .report-title {
-      font-size: 24px;
+      font-size: 14px;
       font-weight: bold;
       margin: 0;
     }
@@ -183,7 +207,7 @@ $netRevenue = $totalRevenue - $returnedRevenue;
       letter-spacing: 1px;
     }
     .stat-value {
-      font-size: 16px;
+      font-size: 14px;
       font-weight: bold;
       color: #2d8659;
       margin-top: 5px;
@@ -216,7 +240,7 @@ $netRevenue = $totalRevenue - $returnedRevenue;
       color: #666;
     }
     .sale-total {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: bold;
       color: #2d8659;
     }
@@ -336,13 +360,15 @@ $netRevenue = $totalRevenue - $returnedRevenue;
     <div class="report-header">
       <h1 class="report-title">Sales Report</h1>
       <div class="report-meta">
-        <b>Period:</b> <?php echo $periods[$period]; ?></br>
-        <?php if ($period !== 'all'): ?>
-        <b>Date Range:</b> <?php echo $startDate->format('M j, Y'); ?> - <?php echo $endDate->format('M j, Y'); ?><br>
+        <b>Period:</b> <?php echo $periods[$period]; ?><br>
+        <?php if ($useCustomRange): ?>
+          <b>Date Range:</b> <?php echo $startDate->format('M j, Y g:i A'); ?> - <?php echo $endDate->format('M j, Y g:i A'); ?><br>
+        <?php elseif ($period !== 'all'): ?>
+          <b>Date Range:</b> <?php echo $startDate->format('M j, Y'); ?> - <?php echo $endDate->format('M j, Y'); ?><br>
         <?php else: ?>
-        <b>Date Range:</b> All Time</br>
+          <b>Date Range:</b> All Time<br>
         <?php endif; ?>
-        <b>Generated on: </b><?php echo date('M j, Y g:i A'); ?></br>
+        <b>Generated on: </b><?php echo date('M j, Y g:i A'); ?><br>
         <?php if ($user['role'] === 'admin'): ?>
           <b>All Sales Representatives</b>
         <?php else: ?>
@@ -356,8 +382,24 @@ $netRevenue = $totalRevenue - $returnedRevenue;
       <a href="?period=yesterday" class="<?php echo $period === 'yesterday' ? 'active' : ''; ?>">Yesterday</a>
       <a href="?period=week" class="<?php echo $period === 'week' ? 'active' : ''; ?>">This Week</a>
       <a href="?period=month" class="<?php echo $period === 'month' ? 'active' : ''; ?>">This Month</a>
+      <a href="?period=year" class="<?php echo $period === 'year' ? 'active' : ''; ?>">This Year</a>
       <a href="?period=all" class="<?php echo $period === 'all' ? 'active' : ''; ?>">All Time</a>
+      <a href="?period=custom" class="<?php echo $period === 'custom' ? 'active' : ''; ?>">Custom</a>
     </div>
+
+    <?php if ($period === 'custom'): ?>
+    <form method="get" action="sales_report.php" class="custom-range-form" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+      <input type="hidden" name="period" value="custom" />
+      <label style="font-size:0.85rem;color:#475569;">From:
+        <input type="datetime-local" name="start" value="<?php echo htmlspecialchars($customStart ?? ''); ?>" required />
+      </label>
+      <label style="font-size:0.85rem;color:#475569;">To:
+        <input type="datetime-local" name="end" value="<?php echo htmlspecialchars($customEnd ?? ''); ?>" required />
+      </label>
+      <button type="submit" class="primary" style="padding:6px 12px;font-size:0.85rem;">Apply</button>
+      <a href="sales_report.php?period=day" class="secondary" style="padding:6px 12px;font-size:0.85rem;">Clear</a>
+    </form>
+    <?php endif; ?>
 
     <div class="stats-grid">
       <div class="stat-item">
@@ -420,6 +462,6 @@ $netRevenue = $totalRevenue - $returnedRevenue;
     </div>
     </main>
   </div>
-
+  <script src="nav.js"></script>
 </body>
 </html>

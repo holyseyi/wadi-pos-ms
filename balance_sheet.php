@@ -8,42 +8,66 @@ $db = get_database();
 
 // Get period from URL parameter
 $period = $_GET['period'] ?? 'day';
-$periods = ['day' => 'Today', 'yesterday' => 'Yesterday', 'week' => 'This Week', 'month' => 'This Month', 'all' => 'All Time'];
+$periods = ['day' => 'Today', 'yesterday' => 'Yesterday', 'week' => 'This Week', 'month' => 'This Month', 'year' => 'This Year', 'all' => 'All Time', 'custom' => 'Custom Range'];
 
 if (!isset($periods[$period])) {
     $period = 'day';
 }
 
-// Calculate date range based on period
-$now = new DateTime();
-$startDate = clone $now;
-$endDate = clone $now;
+// Handle custom date range
+$customStart = $_GET['start'] ?? null;
+$customEnd = $_GET['end'] ?? null;
+$useCustomRange = false;
 
-switch ($period) {
-    case 'day':
-        $startDate->setTime(0, 0, 0);
-        $endDate->setTime(23, 59, 59);
-        break;
-    case 'yesterday':
-        $startDate->modify('yesterday')->setTime(0, 0, 0);
-        $endDate->modify('yesterday')->setTime(23, 59, 59);
-        break;
-    case 'week':
-        $startDate->modify('monday this week')->setTime(0, 0, 0);
-        $endDate->modify('sunday this week')->setTime(23, 59, 59);
-        break;
-    case 'month':
-        $startDate->modify('first day of this month')->setTime(0, 0, 0);
-        $endDate->modify('last day of this month')->setTime(23, 59, 59);
-        break;
-    case 'all':
-        $startDate = null;
-        $endDate = null;
-        break;
+if ($period === 'custom' && $customStart && $customEnd) {
+    try {
+        $startDate = new DateTime($customStart);
+        $endDate = new DateTime($customEnd);
+        if ($startDate > $endDate) {
+            $useCustomRange = false;
+        } else {
+            $useCustomRange = true;
+        }
+    } catch (Exception $e) {
+        $useCustomRange = false;
+    }
 }
 
-$startDateStr = $startDate ? $startDate->format('c') : '';
-$endDateStr = $endDate ? $endDate->format('c') : '';
+if (!$useCustomRange) {
+    $now = new DateTime();
+    $startDate = clone $now;
+    $endDate = clone $now;
+
+    switch ($period) {
+        case 'day':
+            $startDate->setTime(0, 0, 0);
+            $endDate->setTime(23, 59, 59);
+            break;
+        case 'yesterday':
+            $startDate->modify('yesterday')->setTime(0, 0, 0);
+            $endDate->modify('yesterday')->setTime(23, 59, 59);
+            break;
+        case 'week':
+            $startDate->modify('monday this week')->setTime(0, 0, 0);
+            $endDate->modify('sunday this week')->setTime(23, 59, 59);
+            break;
+        case 'month':
+            $startDate->modify('first day of this month')->setTime(0, 0, 0);
+            $endDate->modify('last day of this month')->setTime(23, 59, 59);
+            break;
+        case 'year':
+            $startDate->modify('first day of January this year')->setTime(0, 0, 0);
+            $endDate->modify('last day of December this year')->setTime(23, 59, 59);
+            break;
+        case 'all':
+            $startDate = null;
+            $endDate = null;
+            break;
+    }
+}
+
+$startDateStr = $startDate ? $startDate->format('Y-m-d H:i:s') : '';
+$endDateStr = $endDate ? $endDate->format('Y-m-d H:i:s') : '';
 
 // Get stock movements
 $stockMovements = get_stock_movements([
@@ -199,7 +223,7 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['pric
       color: #182033;
     }
     h1 {
-      font-size: 16px;
+      font-size: 14px;
       margin: 0 0 8px 0;
     }
     .period-selector {
@@ -265,6 +289,8 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['pric
       padding: 20px;
       margin-bottom: 20px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      height: 600px;
+      overflow-y: auto;
     }
     .section-card h3 {
       margin-top: 0;
@@ -399,6 +425,11 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['pric
     <a href="sales.php" class="back-link">← Back to Sales Register</a>
     <h1>Balance Sheet</h1>
     <p class="meta-info">Period: <?php echo $periods[$period]; ?></p>
+    <?php if ($useCustomRange): ?>
+      <p class="meta-info"><?php echo $startDate->format('M j, Y g:i A'); ?> - <?php echo $endDate->format('M j, Y g:i A'); ?></p>
+    <?php elseif ($period !== 'all'): ?>
+      <p class="meta-info"><?php echo $startDate->format('M j, Y'); ?> - <?php echo $endDate->format('M j, Y'); ?></p>
+    <?php endif; ?>
     <p class="meta-info">Generated on: <?php echo date('M j, Y g:i A'); ?></p>
     <p class="meta-info"><?php echo $user['role'] === 'admin' ? 'All Users' : 'User: ' . htmlspecialchars($user['username']); ?></p>
 
@@ -407,8 +438,24 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['pric
       <a href="?period=yesterday" class="<?php echo $period === 'yesterday' ? 'active' : ''; ?>">Yesterday</a>
       <a href="?period=week" class="<?php echo $period === 'week' ? 'active' : ''; ?>">This Week</a>
       <a href="?period=month" class="<?php echo $period === 'month' ? 'active' : ''; ?>">This Month</a>
+      <a href="?period=year" class="<?php echo $period === 'year' ? 'active' : ''; ?>">This Year</a>
       <a href="?period=all" class="<?php echo $period === 'all' ? 'active' : ''; ?>">All Time</a>
+      <a href="?period=custom" class="<?php echo $period === 'custom' ? 'active' : ''; ?>">Custom</a>
     </div>
+
+    <?php if ($period === 'custom'): ?>
+    <form method="get" action="balance_sheet.php" class="custom-range-form" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+      <input type="hidden" name="period" value="custom" />
+      <label style="font-size:0.85rem;color:#475569;">From:
+        <input type="datetime-local" name="start" value="<?php echo htmlspecialchars($customStart ?? ''); ?>" required />
+      </label>
+      <label style="font-size:0.85rem;color:#475569;">To:
+        <input type="datetime-local" name="end" value="<?php echo htmlspecialchars($customEnd ?? ''); ?>" required />
+      </label>
+      <button type="submit" class="primary" style="padding:6px 12px;font-size:0.85rem;">Apply</button>
+      <a href="balance_sheet.php?period=day" class="secondary" style="padding:6px 12px;font-size:0.85rem;">Clear</a>
+    </form>
+    <?php endif; ?>
 
     <!-- Summary Stats -->
     <div class="stats-grid">
@@ -565,5 +612,6 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['pric
     </div>
     </main>
   </div>
+  <script src="nav.js"></script>
 </body>
 </html>

@@ -16,6 +16,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $user['role'] === 'admin') {
         } else {
             $error = 'Failed to update credit status.';
         }
+    } elseif ($action === 'process_return') {
+        $orderId = intval($_POST['order_id'] ?? 0);
+        $productId = intval($_POST['product_id'] ?? 0);
+        $quantity = intval($_POST['quantity'] ?? 0);
+        $reason = trim($_POST['reason'] ?? '');
+        
+        if ($orderId > 0 && $productId > 0 && $quantity > 0) {
+            if (process_return($orderId, $productId, $quantity, $reason, $user['username'])) {
+                $message = 'Return processed successfully. Stock restored.';
+            } else {
+                $error = 'Failed to process return.';
+            }
+        } else {
+            $error = 'Invalid return data.';
+        }
     }
 }
 
@@ -65,6 +80,12 @@ foreach ($allItems as $item) {
 
 // Sort by date descending
 usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
+
+// Fetch return summaries and history for each order
+foreach ($groupedSales as $orderId => $order) {
+    $groupedSales[$orderId]['return_summary'] = get_order_return_summary($orderId);
+    $groupedSales[$orderId]['return_history'] = get_returns_for_order($orderId);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -195,17 +216,62 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
               </div>
             </div>
             <div class="order-items">
-              <?php foreach ($order['items'] as $item): ?>
-                <div class="item-row">
+              <?php 
+              $returnSummary = $order['return_summary'] ?? null;
+              $returnHistory = $order['return_history'] ?? [];
+              if ($returnSummary && $returnSummary['total_returned'] > 0): ?>
+              <div class="return-summary-banner" style="background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:12px;margin-bottom:12px;font-size:0.85rem;font-weight:600;">
+                <?php echo $returnSummary['total_returned']; ?> of <?php echo $returnSummary['total_items']; ?> items returned
+                <?php if ($returnSummary['fully_returned']): ?> — Fully Returned<?php endif; ?>
+              </div>
+              <?php endif; ?>
+              <?php foreach ($order['items'] as $item): 
+                $returnedQty = 0;
+                foreach ($returnHistory as $ret) {
+                  if ($ret['product_id'] == $item['product_id']) {
+                    $returnedQty += $ret['quantity'];
+                  }
+                }
+                $remainingQty = $item['quantity'] - $returnedQty;
+              ?>
+                <div class="item-row" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                   <div class="item-details">
                     <div class="item-name"><?php echo htmlspecialchars($item['name']); ?></div>
                     <div class="item-meta"><?php echo $item['quantity']; ?> unit(s) × GH₵<?php echo number_format($item['price'], 2); ?></div>
+                    <?php if ($returnedQty > 0): ?>
+                      <div style="color:#d97706;font-size:0.8rem;font-weight:600;">Returned: <?php echo $returnedQty; ?> unit(s)</div>
+                    <?php endif; ?>
                   </div>
-                  <div class="item-price <?php echo $order['return_status'] === 'Returned' ? 'returned' : ''; ?>">
-                    GH₵<?php echo htmlspecialchars(number_format($item['subtotal'], 2)); ?>
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <div class="item-price <?php echo $order['return_status'] === 'Returned' ? 'returned' : ''; ?>">
+                      GH₵<?php echo htmlspecialchars(number_format($item['subtotal'], 2)); ?>
+                    </div>
+                    <?php if ($user['role'] === 'admin' && $remainingQty > 0): ?>
+                      <form method="post" action="returns.php" class="inline-form" style="display:inline-flex;align-items:center;gap:6px;margin:0;">
+                        <input type="hidden" name="action" value="process_return" />
+                        <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>" />
+                        <input type="hidden" name="product_id" value="<?php echo $item['product_id']; ?>" />
+                        <input type="number" name="quantity" value="1" min="1" max="<?php echo $remainingQty; ?>" class="status-select" style="width:60px;padding:6px 8px;font-size:0.85rem;" />
+                        <input type="text" name="reason" placeholder="Reason" class="status-select" style="width:120px;padding:6px 8px;font-size:0.85rem;" />
+                        <button type="submit" class="tertiary" style="font-size:0.78rem;padding:6px 10px;">Return</button>
+                      </form>
+                    <?php endif; ?>
                   </div>
                 </div>
               <?php endforeach; ?>
+              <?php if (!empty($returnHistory)): ?>
+                <div class="return-history" style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;">
+                  <div style="font-weight:700;color:#0f172a;margin-bottom:8px;font-size:0.85rem;">Return History</div>
+                  <?php foreach ($returnHistory as $ret): ?>
+                    <div style="font-size:0.8rem;color:#475569;padding:4px 0;">
+                      <?php echo htmlspecialchars($ret['quantity']); ?>x <?php echo htmlspecialchars($ret['product_name']); ?> 
+                      (<?php echo htmlspecialchars($ret['product_code']); ?>) — 
+                      <?php echo htmlspecialchars(date('M j, Y g:i A', strtotime($ret['created_at']))); ?>
+                      <?php if ($ret['reason']): ?> — "<?php echo htmlspecialchars($ret['reason']); ?>"<?php endif; ?>
+                    </div>
+                  <?php endforeach; ?>
+                </div>
+              <?php endif; ?>
             </div>
           </div>
         <?php endforeach; ?>
@@ -217,6 +283,6 @@ usort($groupedSales, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['c
     </div>
     </main>
   </div>
-
+  <script src="nav.js"></script>
 </body>
 </html>

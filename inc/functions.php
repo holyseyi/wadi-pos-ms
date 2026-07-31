@@ -1091,3 +1091,116 @@ function print_receipt(int $receiptId): ?string {
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     return $result ? $result['receipt_content'] : null;
 }
+
+function process_return(int $orderId, int $productId, int $quantity, string $reason, string $processedBy): bool {
+    $db = get_database();
+    $db->beginTransaction();
+
+    try {
+        $stmt = $db->prepare('SELECT quantity FROM products WHERE id = :id');
+        $stmt->execute([':id' => $productId]);
+        $product = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$product) {
+            $db->rollBack();
+            return false;
+        }
+
+        $newQuantity = (int) $product['quantity'] + $quantity;
+        $update = $db->prepare('UPDATE products SET quantity = :quantity WHERE id = :id');
+        $update->execute([':quantity' => $newQuantity, ':id' => $productId]);
+
+        record_stock_movement(
+            $productId,
+            'in',
+            $quantity,
+            'return',
+            $orderId,
+            'Return: ' . ($reason ?: 'No reason provided')
+        );
+
+        $insertReturn = $db->prepare(
+            'INSERT INTO returns (order_id, product_id, quantity, reason, processed_by, created_at) VALUES (:order_id, :product_id, :quantity, :reason, :processed_by, :created_at)'
+        );
+        $insertReturn->execute([
+            ':order_id' => $orderId,
+            ':product_id' => $productId,
+            ':quantity' => $quantity,
+            ':reason' => $reason,
+            ':processed_by' => $processedBy,
+            ':created_at' => date('c'),
+        ]);
+
+        $itemsStmt = $db->prepare('SELECT product_id, quantity FROM order_items WHERE order_id = :order_id');
+        $itemsStmt->execute([':order_id' => $orderId]);
+        $orderItems = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $returnsStmt = $db->prepare('SELECT product_id, SUM(quantity) as total_returned FROM returns WHERE order_id = :order_id GROUP BY product_id');
+        $returnsStmt->execute([':order_id' => $orderId]);
+        $returns = $returnsStmt->fetchAll(PDO::FETCH_ASSOC);
+        $returnedMap = [];
+        foreach ($returns as $r) {
+            $returnedMap[$r['product_id']] = (int) $r['total_returned'];
+        }
+
+        $allReturned = true;
+        foreach ($orderItems as $item) {
+            $returnedQty = $returnedMap[$item['product_id']] ?? 0;
+            if ($returnedQty < $item['quantity']) {
+                $allReturned = false;
+                break;
+            }
+        }
+
+        if ($allReturned) {
+            $updateReceipt = $db->prepare('UPDATE receipts SET return_status = "Returned" WHERE order_id = :order_id');
+            $updateReceipt->execute([':order_id' => $orderId]);
+        }
+
+        $db->commit();
+        return true;
+    } catch (Exception $e) {
+        $db->rollBack();
+        return false;
+    }
+}
+
+function get_returns_for_order(int $orderId): array {
+    $stmt = get_database()->prepare(
+        'SELECT r.*, p.name as product_name, p.code as product_code
+         FROM returns r
+         JOIN products p ON p.id = r.product_id
+         WHERE r.order_id = :order_id
+         ORDER BY r.created_at DESC'
+    );
+    $stmt->execute([':order_id' => $orderId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function get_order_return_summary(int $orderId): array {
+    $db = get_database();
+    
+    $itemsStmt = $db->prepare('SELECT product_id, quantity FROM order_items WHERE order_id = :order_id');
+    $itemsStmt->execute([':order_id' => $orderId]);
+    $orderItems = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $returnsStmt = $db->prepare('SELECT product_id, SUM(quantity) as total_returned FROM returns WHERE order_id = :order_id GROUP BY product_id');
+    $returnsStmt->execute([':order_id' => $orderId]);
+    $returns = $returnsStmt->fetchAll(PDO::FETCH_ASSOC);
+    $returnedMap = [];
+    foreach ($returns as $r) {
+        $returnedMap[$r['product_id']] = (int) $r['total_returned'];
+    }
+    
+    $totalItems = 0;
+    $totalReturned = 0;
+    foreach ($orderItems as $item) {
+        $totalItems += $item['quantity'];
+        $totalReturned += $returnedMap[$item['product_id']] ?? 0;
+    }
+    
+    return [
+        'total_items' => $totalItems,
+        'total_returned' => $totalReturned,
+        'fully_returned' => $totalItems > 0 && $totalReturned >= $totalItems,
+    ];
+}

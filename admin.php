@@ -286,7 +286,8 @@ $success = isset($_GET['success']);
             <div class="field-grid">
               <label class="input-group">
                 <span class="field-label">Product Name</span>
-                <input id="product-name" name="name" type="text" required value="<?php echo htmlspecialchars($editProduct['name'] ?? ''); ?>" placeholder="Enter product name" />
+                <input id="product-name" name="name" type="text" maxlength="30" required value="<?php echo htmlspecialchars($editProduct['name'] ?? ''); ?>" placeholder="Enter product name" />
+                <span id="name-counter" style="font-size:0.8rem;color:#64748b;text-align:right;">0 / 30</span>
               </label>
               <label class="input-group">
                 <span class="field-label">Category</span>
@@ -638,6 +639,18 @@ $success = isset($_GET['success']);
             // Note: full path set on server after upload
           }
         };
+      }
+
+      // Product name character counter
+      const productNameInput = document.getElementById('product-name');
+      const nameCounter = document.getElementById('name-counter');
+      if (productNameInput && nameCounter) {
+        const updateCounter = () => {
+          const len = productNameInput.value.length;
+          nameCounter.textContent = len + ' / 30';
+        };
+        updateCounter();
+        productNameInput.addEventListener('input', updateCounter);
       }
     });
   </script>

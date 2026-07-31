@@ -4,7 +4,7 @@
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #f8fafc;
   color: #0f172a;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 * {
@@ -175,7 +175,7 @@ button {
 
 .header h1 {
   margin: 0;
-  font-size: 1.4rem;
+  font-size: 14px;
   color: #0f172a;
   font-weight: 700;
 }
@@ -288,9 +288,9 @@ button {
   gap: 18px;
 }
 
-.login-content h1 {
+.login-content > h1 {
   margin: 0;
-  font-size: 2.2rem;
+  font-size: 40px;
   color: #0f172a;
 }
 
@@ -306,8 +306,14 @@ button {
 }
 
 .login-hint {
-  color: #64748b;
-  font-size: 0.95rem;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+  background: #fff7ed;
+  border: 2px solid #f97316;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 8px;
 }
 
 .error-text {
@@ -428,7 +434,7 @@ button.danger:hover {
 }
 
 .layout-grid {
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.5fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
 }
 
 .panel {
@@ -616,7 +622,7 @@ button.danger:hover {
 .admin-product-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  height: 550px;
+  height: 500px;
   overflow-y: auto;
   gap: 12px;
   padding-right: 4px;
@@ -776,7 +782,7 @@ button.danger:hover {
   display: flex;
   justify-content: space-between;
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 14px;
   padding-top: 8px;
   margin-top: 8px;
   border-top: 2px solid #e2e8f0;
@@ -1282,7 +1288,7 @@ button.danger:hover {
 .user-form-section h3,
 .user-list-section h3 {
   margin: 0 0 16px 0;
-  font-size: 1.1rem;
+  font-size: 14px;
   font-weight: 600;
   color: #0f172a;
 }
@@ -1309,7 +1315,7 @@ button.danger:hover {
 
 .user-name {
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 14px;
   color: #0f172a;
 }
 
@@ -1498,7 +1504,7 @@ button.danger:hover {
 
 .sale-id {
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 14px;
   color: #0f172a;
 }
 
@@ -1508,7 +1514,7 @@ button.danger:hover {
 }
 
 .sale-total {
-  font-size: 1.1rem;
+  font-size: 14px;
   font-weight: 600;
   color: #059669;
 }
@@ -1564,7 +1570,7 @@ button.danger:hover {
 }
 
 .report-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: bold;
   margin: 0;
 }
@@ -1597,7 +1603,7 @@ button.danger:hover {
 }
 
 .stat-value {
-  font-size: 1.2rem;
+  font-size: 14px;
   font-weight: 700;
   color: #059669;
   margin-top: 4px;
@@ -1654,7 +1660,7 @@ button.danger:hover {
 
 .returns-summary h3 {
   margin: 0 0 16px;
-  font-size: 1.15rem;
+  font-size: 14px;
   color: #0f172a;
 }
 
@@ -1801,7 +1807,7 @@ button.danger:hover {
   }
 
   .header h1 {
-    font-size: 1.4rem;
+    font-size: 14px;
   }
 
   .brand-icon {
@@ -1851,7 +1857,7 @@ button.danger:hover {
   }
 
   .summary-total {
-    font-size: 1rem;
+    font-size: 14px;
   }
 .products-panel {
     width: 100%;
@@ -1861,8 +1867,20 @@ button.danger:hover {
   .product-list,
   .cart-items {
     gap: 10px;
-    height: 300px;
+    height: 500px;
     overflow-y: scroll;
+  }
+}
+
+/* Medium-large screens (>=1024px): balance product and cart panels.
+   Covers 1024 x 768 and similar. */
+@media (min-width: 1024px) {
+  .layout-grid {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
+  }
+
+  .product-info {
+    gap: 0;
   }
 }
 
@@ -1884,7 +1902,7 @@ button.danger:hover {
   }
 
   .layout-grid {
-    grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.4fr);
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr);
     gap: 24px;
   }
 
@@ -1926,7 +1944,7 @@ button.danger:hover {
 
   .product-actions button {
     padding: 14px 22px;
-    font-size: 1rem;
+    font-size: 14px;
   }
 
   .cart-panel {
@@ -1955,12 +1973,12 @@ button.danger:hover {
     padding: 0;
     background: #ffffff;
     font-family: 'Courier New', monospace;
-    font-size: 11px;
+    font-size: 10px;
   }
 
   h1,
   .report-title {
-    font-size: 16px;
+  font-size: 14px;
   }
 
   h2,

@@ -163,7 +163,7 @@ if ($user['role'] === 'admin') {
         <section class="panel cart-panel">
           <div class="panel-header">
             <h2>Cart</h2>
-            <button id="clear-cart" class="secondary">Clear cart</button>
+            <button id="clear-cart" class="danger">Clear cart</button>
           </div>
           <div id="cart-items" class="cart-items"></div>
           <div class="cart-summary">

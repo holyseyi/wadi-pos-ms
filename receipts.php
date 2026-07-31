@@ -152,5 +152,6 @@ if ($user['role'] === 'admin') {
     <?php endif; ?>
     </main>
   </div>
+  <script src="nav.js"></script>
 </body>
 </html>

@@ -57,6 +57,7 @@ $posName = get_pos_name();
           </label>
           <button id="login-button" class="primary" type="submit">Sign in securely</button>
           <p class="login-hint">
+            Use the following credentials to log in:<br />
             Sales rep: <strong>sales / posSales123</strong><br />
             Admin: <strong>admin / adminSecure!23</strong>
           </p>

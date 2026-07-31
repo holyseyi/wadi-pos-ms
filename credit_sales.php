@@ -269,5 +269,6 @@ usort($groupedCredits, fn($a, $b) => strtotime($b['created_at']) - strtotime($a[
   </script>
     </main>
   </div>
+  <script src="nav.js"></script>
 </body>
 </html>

@@ -1,5 +1,11 @@
 <?php
 session_start();
+// Prevent browser caching so all browsers see fresh data
+if (!headers_sent()) {
+    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    header("Cache-Control: post-check=0, pre-check=0", false);
+    header("Pragma: no-cache");
+}
 
 const USER_CREDENTIALS = [
     [

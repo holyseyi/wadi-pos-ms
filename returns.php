@@ -12,6 +12,13 @@ if (!empty($_SESSION['flash_message'])) {
     unset($_SESSION['flash_message']);
 }
 
+// Prevent caching so return changes are always fresh
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_cache_limiter('nocache');
+}
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $user['role'] === 'admin') {
     $action = $_POST['action'] ?? '';
     if ($action === 'mark_credit_paid') {
@@ -255,11 +262,11 @@ foreach ($groupedSales as $order) {
               <?php foreach ($order['items'] as $item): 
                 $returnedQty = 0;
                 foreach ($returnHistory as $ret) {
-                  if ($ret['product_id'] == $item['product_id']) {
-                    $returnedQty += $ret['quantity'];
+                  if ((int) $ret['product_id'] === (int) $item['product_id']) {
+                    $returnedQty += (int) $ret['quantity'];
                   }
                 }
-                $remainingQty = $item['quantity'] - $returnedQty;
+                $remainingQty = max(0, (int) $item['quantity'] - $returnedQty);
               ?>
                 <div class="item-row" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                   <div class="item-details">
@@ -274,8 +281,8 @@ foreach ($groupedSales as $order) {
                     <div class="item-price <?php echo $order['return_status'] === 'Returned' ? 'returned' : ''; ?>">
                       GH₵<?php echo htmlspecialchars(number_format($item['subtotal'], 2)); ?>
                     </div>
-                     <?php if ($user['role'] === 'admin' && $remainingQty > 0): ?>
-                        <form method="post" action="returns.php" class="inline-form" style="display:inline-flex;align-items:center;gap:6px;margin:0;">
+                      <?php if ($user['role'] === 'admin' && $remainingQty > 0): ?>
+                        <form method="post" action="returns.php" class="inline-form" style="display:inline-flex;align-items:center;gap:6px;margin:0;" onsubmit="this.querySelector('button[type=submit]').disabled=true;">
                           <input type="hidden" name="action" value="process_return" />
                           <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>" />
                           <input type="hidden" name="product_id" value="<?php echo $item['product_id']; ?>" />
@@ -284,7 +291,7 @@ foreach ($groupedSales as $order) {
                           <button type="submit" class="danger" style="font-size:0.78rem;padding:6px 10px;">Return</button>
                         </form>
                       <?php elseif ($user['role'] === 'admin' && $remainingQty <= 0): ?>
-                        <span style="font-size:0.78rem;color:#6b7280;background:#e5e7eb;padding:4px 10px;border-radius:999px;">No more units available for return</span>
+                        <span style="font-size:0.78rem;color:#6b7280;background:#e5e7eb;padding:4px 10px;border-radius:999px;font-weight:600;">No more units available for return</span>
                       <?php endif; ?>
                   </div>
                 </div>

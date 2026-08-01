@@ -1102,6 +1102,32 @@ function process_return(int $orderId, int $productId, int $quantity, string $rea
     $db->beginTransaction();
 
     try {
+        // Check how many units of this product were actually ordered
+        $itemsCheckStmt = $db->prepare('SELECT quantity FROM order_items WHERE order_id = :order_id AND product_id = :product_id');
+        $itemsCheckStmt->execute([':order_id' => $orderId, ':product_id' => $productId]);
+        $orderItem = $itemsCheckStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$orderItem) {
+            $db->rollBack();
+            return false;
+        }
+        $orderedQty = (int) $orderItem['quantity'];
+
+        // Check how many units have already been returned for this product in this order
+        $returnsCheckStmt = $db->prepare('SELECT SUM(quantity) as total_returned FROM returns WHERE order_id = :order_id AND product_id = :product_id');
+        $returnsCheckStmt->execute([':order_id' => $orderId, ':product_id' => $productId]);
+        $alreadyReturned = (int) ($returnsCheckStmt->fetch(PDO::FETCH_ASSOC)['total_returned'] ?? 0);
+
+        // Prevent returning more than was ordered
+        if ($alreadyReturned >= $orderedQty) {
+            $db->rollBack();
+            return false;
+        }
+
+        // Calculate how many units can still be returned
+        $remainingToReturn = $orderedQty - $alreadyReturned;
+        $quantityToProcess = min($quantity, $remainingToReturn);
+
+        // Increase stock
         $stmt = $db->prepare('SELECT quantity FROM products WHERE id = :id');
         $stmt->execute([':id' => $productId]);
         $product = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1111,31 +1137,33 @@ function process_return(int $orderId, int $productId, int $quantity, string $rea
         }
 
         $currentQty = (int) $product['quantity'];
-        $newQuantity = $currentQty + $quantity;
+        $newQuantity = $currentQty + $quantityToProcess;
         $update = $db->prepare('UPDATE products SET quantity = :quantity WHERE id = :id');
         $update->execute([':quantity' => $newQuantity, ':id' => $productId]);
 
         record_stock_movement(
             $productId,
             'in',
-            $quantity,
+            $quantityToProcess,
             'return',
             $orderId,
             'Return: ' . ($reason ?: 'No reason provided')
         );
 
+        // Record the return
         $insertReturn = $db->prepare(
             'INSERT INTO returns (order_id, product_id, quantity, reason, processed_by, created_at) VALUES (:order_id, :product_id, :quantity, :reason, :processed_by, :created_at)'
         );
         $insertReturn->execute([
             ':order_id' => $orderId,
             ':product_id' => $productId,
-            ':quantity' => $quantity,
+            ':quantity' => $quantityToProcess,
             ':reason' => $reason,
             ':processed_by' => $processedBy,
             ':created_at' => date('c'),
         ]);
 
+        // Check if all items in the order have been fully returned
         $itemsStmt = $db->prepare('SELECT product_id, quantity FROM order_items WHERE order_id = :order_id');
         $itemsStmt->execute([':order_id' => $orderId]);
         $orderItems = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);

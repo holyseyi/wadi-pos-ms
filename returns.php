@@ -29,7 +29,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $user['role'] === 'admin') {
         
         if ($orderId > 0 && $productId > 0 && $quantity > 0) {
             if (process_return($orderId, $productId, $quantity, $reason, $user['username'])) {
-                $_SESSION['flash_message'] = 'Return processed successfully.';
+                $stockStmt = get_database()->prepare('SELECT quantity FROM products WHERE id = :id');
+                $stockStmt->execute([':id' => $productId]);
+                $newStock = (int) ($stockStmt->fetch(PDO::FETCH_ASSOC)['quantity'] ?? 0);
+                $_SESSION['flash_message'] = "Return processed successfully. Stock increased to {$newStock} unit(s).";
                 header('Location: returns.php');
                 exit;
             } else {
@@ -262,7 +265,7 @@ foreach ($groupedSales as $order) {
                   <div class="item-details">
                     <div class="item-name"><?php echo htmlspecialchars($item['name']); ?></div>
                     <div class="item-meta"><?php echo $item['quantity']; ?> unit(s) × GH₵<?php echo number_format($item['price'], 2); ?></div>
-                    <div class="item-meta">Current stock: <?php echo $productStock[$item['product_id']] ?? 0; ?> unit(s)</div>
+                    <div class="item-meta" style="font-weight:600;">Current stock: <?php echo $productStock[$item['product_id']] ?? 0; ?> unit(s)</div>
                     <?php if ($returnedQty > 0): ?>
                       <div style="color:#d97706;font-size:0.8rem;font-weight:600;">Returned: <?php echo $returnedQty; ?> unit(s)</div>
                     <?php endif; ?>
@@ -271,16 +274,16 @@ foreach ($groupedSales as $order) {
                     <div class="item-price <?php echo $order['return_status'] === 'Returned' ? 'returned' : ''; ?>">
                       GH₵<?php echo htmlspecialchars(number_format($item['subtotal'], 2)); ?>
                     </div>
-                     <?php if ($user['role'] === 'admin' && $remainingQty > 0 && ($productStock[$item['product_id']] ?? 0) > 0): ?>
+                     <?php if ($user['role'] === 'admin' && $remainingQty > 0): ?>
                         <form method="post" action="returns.php" class="inline-form" style="display:inline-flex;align-items:center;gap:6px;margin:0;">
                           <input type="hidden" name="action" value="process_return" />
                           <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>" />
                           <input type="hidden" name="product_id" value="<?php echo $item['product_id']; ?>" />
-                          <input type="number" name="quantity" value="1" min="1" max="<?php echo min($remainingQty, $productStock[$item['product_id']] ?? 0); ?>" class="status-select" style="width:60px;padding:6px 8px;font-size:0.85rem;" />
+                          <input type="number" name="quantity" value="1" min="1" max="<?php echo $remainingQty; ?>" class="status-select" style="width:60px;padding:6px 8px;font-size:0.85rem;" />
                           <input type="text" name="reason" placeholder="Reason" class="status-select" style="width:120px;padding:6px 8px;font-size:0.85rem;" />
                           <button type="submit" class="danger" style="font-size:0.78rem;padding:6px 10px;">Return</button>
                         </form>
-                      <?php elseif ($user['role'] === 'admin' && ($remainingQty <= 0 || ($productStock[$item['product_id']] ?? 0) <= 0)): ?>
+                      <?php elseif ($user['role'] === 'admin' && $remainingQty <= 0): ?>
                         <span style="font-size:0.78rem;color:#6b7280;background:#e5e7eb;padding:4px 10px;border-radius:999px;">No more units available for return</span>
                       <?php endif; ?>
                   </div>

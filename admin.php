@@ -224,7 +224,7 @@ $success = isset($_GET['success']);
   <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body data-page="admin">
+<body>
   <div class="app-shell">
     <header class="header">
       <div class="brand">
@@ -234,6 +234,7 @@ $success = isset($_GET['success']);
           <p class="subtitle">Admin dashboard for product management.</p>
         </div>
       </div>
+
       <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="header-actions">
         <span></span><span></span><span></span>
       </button>

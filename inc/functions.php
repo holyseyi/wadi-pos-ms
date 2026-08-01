@@ -518,56 +518,61 @@ function save_order(array $cart, string $username, array $credit = []): ?int {
     $db = get_database();
     $db->beginTransaction();
 
-    // Decrease stock for each product
-    $updateStock = $db->prepare('UPDATE products SET quantity = quantity - :quantity WHERE id = :id');
-    foreach ($orderItems as $item) {
-        $updateStock->execute([
-            ':quantity' => $item['quantity'],
-            ':id' => $item['product_id'],
+    try {
+        // Decrease stock for each product
+        $updateStock = $db->prepare('UPDATE products SET quantity = quantity - :quantity WHERE id = :id');
+        foreach ($orderItems as $item) {
+            $updateStock->execute([
+                ':quantity' => $item['quantity'],
+                ':id' => $item['product_id'],
+            ]);
+        }
+
+        $isCredit = !empty($credit['enabled']) ? 1 : 0;
+        $customerName = $credit['customer_name'] ?? null;
+        $customerPhone = $credit['customer_phone'] ?? null;
+        $creditStatus = $isCredit ? 'Pending' : 'Paid';
+
+        $stmt = $db->prepare('INSERT INTO orders (username, total, status, created_at, credit, customer_name, customer_phone, credit_status) VALUES (:username, :total, :status, :created_at, :credit, :customer_name, :customer_phone, :credit_status)');
+        $stmt->execute([
+            ':username' => $username,
+            ':total' => $total,
+            ':status' => 'Pending',
+            ':created_at' => date('c'),
+            ':credit' => $isCredit,
+            ':customer_name' => $customerName,
+            ':customer_phone' => $customerPhone,
+            ':credit_status' => $creditStatus,
         ]);
+
+        $orderId = (int) $db->lastInsertId();
+        $insertItem = $db->prepare('INSERT INTO order_items (order_id, product_id, name, price, quantity, subtotal) VALUES (:order_id, :product_id, :name, :price, :quantity, :subtotal)');
+        foreach ($orderItems as $item) {
+            $insertItem->execute([
+                ':order_id' => $orderId,
+                ':product_id' => $item['product_id'],
+                ':name' => $item['name'],
+                ':price' => $item['price'],
+                ':quantity' => $item['quantity'],
+                ':subtotal' => $item['subtotal'],
+            ]);
+            
+            record_stock_movement(
+                $item['product_id'],
+                'out',
+                $item['quantity'],
+                'order',
+                $orderId,
+                'Sale order #' . $orderId
+            );
+        }
+
+        $db->commit();
+        return $orderId;
+    } catch (Exception $e) {
+        $db->rollBack();
+        return null;
     }
-
-    $isCredit = !empty($credit['enabled']) ? 1 : 0;
-    $customerName = $credit['customer_name'] ?? null;
-    $customerPhone = $credit['customer_phone'] ?? null;
-    $creditStatus = $isCredit ? 'Pending' : 'Paid';
-
-    $stmt = $db->prepare('INSERT INTO orders (username, total, status, created_at, credit, customer_name, customer_phone, credit_status) VALUES (:username, :total, :status, :created_at, :credit, :customer_name, :customer_phone, :credit_status)');
-    $stmt->execute([
-        ':username' => $username,
-        ':total' => $total,
-        ':status' => 'Pending',
-        ':created_at' => date('c'),
-        ':credit' => $isCredit,
-        ':customer_name' => $customerName,
-        ':customer_phone' => $customerPhone,
-        ':credit_status' => $creditStatus,
-    ]);
-
-    $orderId = (int) $db->lastInsertId();
-    $insertItem = $db->prepare('INSERT INTO order_items (order_id, product_id, name, price, quantity, subtotal) VALUES (:order_id, :product_id, :name, :price, :quantity, :subtotal)');
-    foreach ($orderItems as $item) {
-        $insertItem->execute([
-            ':order_id' => $orderId,
-            ':product_id' => $item['product_id'],
-            ':name' => $item['name'],
-            ':price' => $item['price'],
-            ':quantity' => $item['quantity'],
-            ':subtotal' => $item['subtotal'],
-        ]);
-        
-        record_stock_movement(
-            $item['product_id'],
-            'out',
-            $item['quantity'],
-            'order',
-            $orderId,
-            'Sale order #' . $orderId
-        );
-    }
-
-    $db->commit();
-    return $orderId;
 }
 
 function load_orders(): array {
@@ -1106,20 +1111,14 @@ function process_return(int $orderId, int $productId, int $quantity, string $rea
         }
 
         $currentQty = (int) $product['quantity'];
-        if ($currentQty <= 0) {
-            $db->rollBack();
-            return false;
-        }
-
-        $quantityToDeduct = min($quantity, $currentQty);
-        $newQuantity = $currentQty - $quantityToDeduct;
+        $newQuantity = $currentQty + $quantity;
         $update = $db->prepare('UPDATE products SET quantity = :quantity WHERE id = :id');
         $update->execute([':quantity' => $newQuantity, ':id' => $productId]);
 
         record_stock_movement(
             $productId,
             'in',
-            $quantityToDeduct,
+            $quantity,
             'return',
             $orderId,
             'Return: ' . ($reason ?: 'No reason provided')

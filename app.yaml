@@ -12,7 +12,7 @@ annotations:
     name: out
     phpix: true
   anybuild.run/provider: php
-  anybuild.run/version: 0.26.1
+  anybuild.run/version: 0.25.0
   shipitcli.com/config:
     commands: {}
     name: out

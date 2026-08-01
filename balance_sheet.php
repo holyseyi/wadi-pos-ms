@@ -167,11 +167,18 @@ $inventory = $db->query('SELECT * FROM products ORDER BY name')->fetchAll(PDO::F
 
 // Get credit sales breakdown
 $creditQuery = 'SELECT * FROM orders WHERE credit = 1';
+if ($period !== 'all' && !empty($startDateStr) && !empty($endDateStr)) {
+    $creditQuery .= ' AND created_at >= :start_date AND created_at <= :end_date';
+}
 if ($user['role'] !== 'admin') {
     $creditQuery .= ' AND username = :username';
 }
 $creditQuery .= ' ORDER BY created_at DESC';
 $creditStmt = $db->prepare($creditQuery);
+if ($period !== 'all' && !empty($startDateStr) && !empty($endDateStr)) {
+    $creditStmt->bindValue(':start_date', $startDateStr);
+    $creditStmt->bindValue(':end_date', $endDateStr);
+}
 if ($user['role'] !== 'admin') {
     $creditStmt->execute([':username' => $user['username']]);
 } else {

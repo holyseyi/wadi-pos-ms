@@ -21,6 +21,9 @@ body {
 
 body {
   padding: 24px;
+  padding-left: max(24px, env(safe-area-inset-left));
+  padding-right: max(24px, env(safe-area-inset-right));
+  padding-top: max(24px, env(safe-area-inset-top));
   background: #f1f5f9;
   background-image: radial-gradient(circle at 20% 10%, #e0f2fe 0%, transparent 40%),
                     radial-gradient(circle at 80% 90%, #f0f9ff 0%, transparent 40%);
@@ -155,6 +158,8 @@ button {
   margin-bottom: 24px;
   width: 100%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
 }
 
 .brand {
@@ -617,12 +622,15 @@ button.danger:hover {
 .cart-panel,
 .admin-management {
   min-width: 0;
-  min-height: 480px;
+  min-height: 480px; 
+  overflow-y: scroll;
 }
 .products-panel{
   width: 100%;
   height: 600px;
   padding: inherit;
+  overflow-y: scroll;
+
 }
 .cart-panel{
   width: 100%;
@@ -1741,37 +1749,11 @@ button.danger:hover {
 
 /* ===== RESPONSIVE ===== */
 
-/* Tablet and below (<=960px): collapse nav into hamburger and stack grids.
-   Covers 768 x 562, 425 x 562, 375 x 562 and 320 x 562. */
-
-   @media (max-width: 960px) {
-  .menu-toggle {
-    display: flex;
-  }
-
-  .header-actions {
-    display: none;
-    width: 100%;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-.cart-panel {
-    width: 100%;
-    height: 600px;
-    overflow-y: scroll;
-}
-  .header-actions.open {
-    display: flex;
-  }
-
-  .header-actions a,
-  .header-actions form {
-    width: 100%;
-  }
-
-  .header-actions a {
-    justify-content: flex-start;
+/* Tablet and below (<=1024px): collapse nav into hamburger and stack grids.
+   Covers iPad Pro 11", iPad Air, Surface Pro, etc. */
+@media (max-width: 1024px) {
+  .main-grid {
+    gap: 20px;
   }
 
   .dashboard-grid,
@@ -1801,47 +1783,89 @@ button.danger:hover {
     width: 80px;
     height: 80px;
   }
-  .products-panel{
-    width:100%;
+
+  .products-panel {
+    width: 100%;
+    overflow-y: scroll;
   }
+
   .product-info,
   .cart-info {
     display: grid;
     gap: 10px;
-    flex-wrap:wrap;
+    flex-wrap: wrap;
+  }
+
+  .cart-panel {
+    width: 100%;
+    height: 600px;
+    overflow-y: scroll;
+  }
+
+  .panel-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .panel-header-row .hint {
+    margin-top: 0;
+  }
+
+  .panel-header-row .receipt-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 
-/* Phones (<=600px): tighter spacing and full-width controls.
-   Covers 320 x 562, 375 x 562 and 425 x 562. */
-@media (max-width: 600px) {
-  .receipt-actions{
-    width:100%;
-    display:flex;
+/* Tablet and below (<=960px): show hamburger menu and vertical nav.
+   Covers iPad (portrait), Surface Go, etc. */
+@media (max-width: 960px) {
+  .menu-toggle {
+    display: flex;
   }
-  
+
+  .header-actions {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    z-index: 1050;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 16px;
+    margin-top: 8px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  }
+
+  .header-actions.open {
+    display: flex;
+  }
+
+  .header-actions a,
+  .header-actions form {
+    width: 100%;
+  }
+
+  .header-actions a {
+    justify-content: flex-start;
+  }
+}
+
+/* Large phones / small tablets (max-width: 820px):
+   Covers iPhone 11 Pro Max, iPhone 14/15 Plus, iPad mini, etc. */
+@media (max-width: 820px) {
   body {
-    padding: 12px;
-    background: #f8fafc;
-  }
-
-  .login-card {
-    grid-template-columns: 1fr;
-  }
-
-  .header,
-  .panel,
-  .receipt-panel {
     padding: 16px;
   }
 
   .header {
-    display: flex;
-    width: 437px;
-  }
-
-  .header h1 {
-    font-size: 14px;
+    padding: 12px 16px;
   }
 
   .brand-icon {
@@ -1849,60 +1873,411 @@ button.danger:hover {
     height: 48px;
   }
 
+  .header h1 {
+    font-size: 14px;
+  }
+
   .subtitle {
+    font-size: 0.8rem;
+  }
+
+  .header-actions a,
+  .header-actions form {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+
+  .panel {
+    padding: 20px;
+  }
+
+  .dashboard-grid,
+  .layout-grid {
+    gap: 20px;
+  }
+
+  .product-list,
+  .cart-items,
+  .admin-product-list {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .product-card,
+  .cart-item,
+  .admin-product-card {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .product-card img,
+  .admin-product-card img {
+    width: 70px;
+    height: 70px;
+  }
+
+  .product-name,
+  .cart-name,
+  .admin-name {
+    font-size: 0.8rem;
+  }
+
+  .scan-actions {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .scan-actions > button {
+    width: 100%;
+  }
+
+  .credit-fields {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .credit-fields .input-group {
+    flex: 1;
+  }
+
+  .receipt-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .receipt-actions > * {
+    width: 100%;
+  }
+
+  .user-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .user-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* Standard phones (max-width: 480px): tighter spacing and full-width controls.
+   Covers iPhone 14/15 Pro, iPhone 13, Samsung Galaxy S20/21, etc. */
+@media (max-width: 480px) {
+  body {
+    padding: 12px;
+  }
+
+  .header {
+    padding: 10px 12px;
+  }
+
+  .brand-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .header h1 {
+    font-size: 13px;
+  }
+
+  .subtitle {
+    font-size: 0.75rem;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .main-grid {
+    gap: 16px;
+  }
+
+  .product-list,
+  .cart-items,
+  .admin-product-list {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .product-card,
+  .cart-item,
+  .admin-product-card {
+    padding: 14px;
+    gap: 12px;
+    min-height: 140px;
+  }
+
+  .product-card img,
+  .admin-product-card img {
+    width: 60px;
+    height: 60px;
+  }
+
+  .product-name,
+  .cart-name,
+  .admin-name {
+    font-size: 0.75rem;
+  }
+
+  .product-price,
+  .cart-price,
+  .admin-price {
+    font-size: 0.8rem;
+  }
+
+  .summary-row,
+  .summary-total {
     font-size: 0.85rem;
   }
 
-  .panel-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .header-actions,
-  .scan-actions,
-  .product-actions,
-  .cart-actions-row,
-  .admin-actions,
-  .order-actions,
-  .form-actions,
-  .receipt-actions,
-  .receipt-management-actions,
-  .sales-actions,
-  .user-actions {
-    justify-content: stretch;
-    display:-webkit-inline-box;
-    text-align: end;
-  }
-  
-  .header-actions{
-    display:none;
-  }
-
-  .scan-actions > button.primary{
-    width: 50%;
-  }
-  .scan-actions > button.tertiary{
-    width: 45%;
-  }
-  .status-select,
-  button,
-  input[type="file"] {
-    width: 100%;
-  }
-
-  .summary-total {
+  .panel-header h2,
+  .report-title {
     font-size: 14px;
   }
-.products-panel {
-    width: 100%;
-    height: 600px;
-    overflow: visible;
+
+  .stat-value {
+    font-size: 12px;
+  }
+
+  .stat-label {
+    font-size: 0.65rem;
+  }
+
+  .item-name {
+    font-size: 0.75rem;
+  }
+
+  .item-meta {
+    font-size: 0.7rem;
+  }
+
+  .button {
+    padding: 10px 16px;
+    font-size: 0.85rem;
+  }
+
+  .menu-toggle {
+    width: 40px;
+    height: 40px;
+  }
+
+  .header-actions {
+    padding: 12px;
+  }
+
+  .header-actions a,
+  .header-actions form {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+  }
+
+  .receipt-management-preview {
+    font-size: 0.75rem;
+    padding: 8px;
+    min-height: 60px;
+  }
+
+  .receipt-management-card {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .history-details {
+    font-size: 0.8rem;
+  }
+
+  .time-label,
+  .ip-label {
+    min-width: 70px;
+    font-size: 0.72rem;
+  }
+
+  .time-value,
+  .ip-value {
+    font-size: 0.75rem;
+  }
 }
-  .product-list,
-  .cart-items {
+
+/* Compact phones (max-width: 375px):
+   Covers iPhone SE (all generations), Samsung Galaxy A, Pixel, etc. */
+@media (max-width: 375px) {
+  body {
+    padding: 8px;
+  }
+
+  .header {
+    padding: 8px 10px;
+  }
+
+  .brand {
+    gap: 8px;
+  }
+
+  .brand-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .header h1 {
+    font-size: 12px;
+  }
+
+  .subtitle {
+    font-size: 0.7rem;
+  }
+
+  .panel {
+    padding: 14px;
+  }
+
+  .main-grid {
+    gap: 14px;
+  }
+
+  .product-card,
+  .cart-item,
+  .admin-product-card {
+    padding: 12px;
     gap: 10px;
-    height: 500px;
-    overflow-y: scroll;
+    min-height: 130px;
+  }
+
+  .product-card img,
+  .admin-product-card img {
+    width: 55px;
+    height: 55px;
+  }
+
+  .product-name,
+  .cart-name,
+  .admin-name {
+    font-size: 0.7rem;
+  }
+
+  .product-meta,
+  .cart-meta,
+  .admin-meta {
+    font-size: 0.65rem;
+  }
+
+  .product-price,
+  .cart-price,
+  .admin-price {
+    font-size: 0.75rem;
+  }
+
+  .menu-toggle {
+    width: 38px;
+    height: 38px;
+    padding: 6px;
+  }
+
+  .header-actions a,
+  .header-actions form {
+    padding: 6px 8px;
+    font-size: 0.8rem;
+  }
+
+  .summary-row,
+  .summary-total {
+    font-size: 0.8rem;
+  }
+
+  .stat-value {
+    font-size: 11px;
+  }
+
+  .stat-label {
+    font-size: 0.6rem;
+  }
+
+  .panel-header h2 {
+    font-size: 12px;
+  }
+
+  .item-name {
+    font-size: 0.7rem;
+  }
+
+  .item-meta {
+    font-size: 0.65rem;
+  }
+
+  .receipt-management-preview {
+    font-size: 0.7rem;
+    padding: 6px;
+  }
+
+  .receipt-management-card {
+    padding: 10px;
+    gap: 6px;
+  }
+
+  .return-order {
+    padding: 10px;
+  }
+
+  .order-meta {
+    font-size: 0.7rem;
+  }
+
+  .form-actions button {
+    padding: 10px 14px;
+  }
+
+  .scan-actions > button {
+    width: 100%;
+    padding: 10px 14px;
+  }
+}
+
+/* Ultra-compact phones (max-width: 320px):
+   Covers very small Android devices, older iPhones. */
+@media (max-width: 320px) {
+  .header-actions a,
+  .header-actions form {
+    padding: 6px 8px;
+    font-size: 0.75rem;
+  }
+
+  .product-card,
+  .cart-item,
+  .admin-product-card {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .product-card img,
+  .admin-product-card img {
+    width: 50px;
+    height: 50px;
+  }
+
+  .admin-price,
+  .product-price,
+  .cart-price {
+    font-size: 0.7rem;
+  }
+
+  .summary-row span,
+  .summary-total span {
+    font-size: 0.75rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .form-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .form-actions button,
+  .form-actions a {
+    width: 100%;
   }
 }
 

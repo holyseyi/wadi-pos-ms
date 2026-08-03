@@ -76,7 +76,11 @@ usort($groupedCredits, fn($a, $b) => strtotime($b['created_at']) - strtotime($a[
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($posName); ?>" />
+  <link rel="apple-touch-icon" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <title><?php echo htmlspecialchars($posName); ?> - Credit Sales</title>
   <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <link rel="stylesheet" href="styles.css" />

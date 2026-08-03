@@ -251,6 +251,8 @@ button {
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 .menu-toggle span {
@@ -275,6 +277,40 @@ button {
 .menu-toggle[aria-expanded="true"] span:nth-child(3) {
   -webkit-transform: translateY(-7px) rotate(-45deg);
   transform: translateY(-7px) rotate(-45deg);
+}
+
+/* Touch devices: remove hover-only states and ensure tap targets are large enough.
+   Applies to iOS Safari, Android Chrome, and other touch-based browsers. */
+@media (hover: none) {
+  button:hover,
+  button.primary:hover,
+  button.secondary:hover,
+  button.tertiary:hover,
+  button.print-btn:hover,
+  button.danger:hover {
+    transform: none;
+  }
+
+  .header-actions a:hover,
+  .back-link:hover {
+    background-color: #f8fafc;
+    border-color: #e2e8f0;
+  }
+
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .header-actions a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .menu-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* ===== LOGIN ===== */

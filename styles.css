@@ -160,6 +160,7 @@ button {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   padding-left: max(20px, env(safe-area-inset-left));
   padding-right: max(20px, env(safe-area-inset-right));
+  position: relative;
 }
 
 .brand {

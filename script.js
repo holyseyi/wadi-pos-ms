@@ -43,9 +43,9 @@ function getBulkUnitPrice(product, quantity) {
   const threshold = parseInt(product.bulk_quantity_threshold, 10) || 0;
   const discount = parseFloat(product.bulk_discount_percentage) || 0;
   if (threshold > 0 && discount > 0 && quantity >= threshold) {
-    return roundTo(product.price * (1 - discount / 100), 2);
+    return roundTo(product.selling_price * (1 - discount / 100), 2);
   }
-  return product.price;
+  return product.selling_price;
 }
 
 function getCartItem(productId) {
@@ -127,8 +127,8 @@ function renderProducts() {
         ? `<div class="bulk-discount-badge">Bulk: ${bulkThreshold}+ @ ${bulkDiscountPercent}% off</div>`
         : '';
       const discountedPrice = (bulkThreshold > 0 && bulkDiscountPercent > 0)
-        ? formatMoney(roundTo(product.price * (1 - bulkDiscountPercent / 100), 2))
-        : formatMoney(product.price);
+        ? formatMoney(roundTo(product.selling_price * (1 - bulkDiscountPercent / 100), 2))
+        : formatMoney(product.selling_price);
 
       return `
       <article class="product-card ${isOutOfStock ? 'out-of-stock' : ''}">
@@ -136,7 +136,7 @@ function renderProducts() {
         <div class="product-info">
           <div class="product-name">${product.name}</div>
           <div class="product-category">${product.category} • Code ${product.code}</div>
-          <div class="product-price">${formatMoney(product.price)}</div>
+          <div class="product-price">${formatMoney(product.selling_price)}</div>
           ${bulkBadge}
           <div class="product-bulk-price">Bulk unit price: ${discountedPrice}</div>
           <div class="product-stock ${stockClass}">${stockText}</div>
@@ -230,7 +230,7 @@ function createReceipt(orderId, credit) {
     }
 
     if (bulkApplied) {
-      const savings = roundTo((entry.product.price - unitPrice) * entry.quantity, 2);
+      const savings = roundTo((entry.product.selling_price - unitPrice) * entry.quantity, 2);
       lines.push(`  ${(" " + entry.quantity + "@" + formatMoney(unitPrice).slice(2) + "ea").padEnd(22)} ${"".padStart(3)} ${("" + "-" + formatMoney(savings).slice(2)).padStart(9)}`);
     }
 

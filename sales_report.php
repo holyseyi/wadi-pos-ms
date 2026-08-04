@@ -74,17 +74,21 @@ if ($period === 'all') {
     // No date filter for All Time
     $query = 'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
                      o.username, o.total, o.created_at, o.status,
-                     r.return_status, r.receipt_content
-              FROM order_items oi
-              JOIN orders o ON o.id = oi.order_id
-              LEFT JOIN receipts r ON r.order_id = o.id';
-} else {
-    $query = 'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
-                     o.username, o.total, o.created_at, o.status,
-                     r.return_status, r.receipt_content
+                     r.return_status, r.receipt_content,
+                     p.cost_price, p.selling_price
               FROM order_items oi
               JOIN orders o ON o.id = oi.order_id
               LEFT JOIN receipts r ON r.order_id = o.id
+              LEFT JOIN products p ON p.id = oi.product_id';
+} else {
+    $query = 'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
+                     o.username, o.total, o.created_at, o.status,
+                     r.return_status, r.receipt_content,
+                     p.cost_price, p.selling_price
+              FROM order_items oi
+              JOIN orders o ON o.id = oi.order_id
+              LEFT JOIN receipts r ON r.order_id = o.id
+              LEFT JOIN products p ON p.id = oi.product_id
               WHERE o.created_at >= :start_date AND o.created_at <= :end_date';
 }
 
@@ -136,6 +140,7 @@ $totalRevenue = 0;
 $totalItems = 0;
 $returnedSales = 0;
 $returnedRevenue = 0;
+$totalCost = 0;
 
 foreach ($groupedSales as $order) {
     $totalRevenue += $order['total'];
@@ -144,9 +149,15 @@ foreach ($groupedSales as $order) {
         $returnedSales++;
         $returnedRevenue += $order['total'];
     }
+    if ($user['role'] === 'admin') {
+        foreach ($order['items'] as $item) {
+            $totalCost += ($item['cost_price'] ?? 0) * $item['quantity'];
+        }
+    }
 }
 
 $netRevenue = $totalRevenue - $returnedRevenue;
+$profitLoss = $user['role'] === 'admin' ? $netRevenue - $totalCost : 0;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -251,6 +262,14 @@ $netRevenue = $totalRevenue - $returnedRevenue;
         <div class="stat-label">Gross Revenue</div>
         <div class="stat-value">GH₵<?php echo number_format($totalRevenue, 2); ?></div>
       </div>
+      <?php if ($user['role'] === 'admin'): ?>
+        <div class="stat-item">
+          <div class="stat-label">Net Profit/Loss</div>
+          <div class="stat-value <?php echo $profitLoss >= 0 ? 'text-success' : 'text-error'; ?>">
+            GH₵<?php echo number_format($profitLoss, 2); ?>
+          </div>
+        </div>
+      <?php endif; ?>
     </div>
     <div class="actions">
       <button class="print-btn" onclick="window.print()">Print Report</button>
@@ -280,8 +299,18 @@ $netRevenue = $totalRevenue - $returnedRevenue;
             <div class="sale-items">
               <?php foreach ($order['items'] as $item): ?>
                 <div class="item-row">
-                  <div class="item-name">
-                    <?php echo htmlspecialchars($item['name']); ?> (<?php echo $item['quantity']; ?> × GH₵<?php echo number_format($item['price'], 2); ?>)
+                  <div class="item-details">
+                    <div class="item-name">
+                      <?php echo htmlspecialchars($item['name']); ?> (<?php echo $item['quantity']; ?> × GH₵<?php echo number_format($item['price'], 2); ?>)
+                    </div>
+                    <?php if ($user['role'] === 'admin'): ?>
+                      <?php
+                        $itemCost = ($item['cost_price'] ?? 0) * $item['quantity'];
+                        $itemProfit = $item['subtotal'] - $itemCost;
+                        $itemMarginClass = $itemProfit >= 0 ? 'text-success' : 'text-error';
+                      ?>
+                      <div class="item-meta">Cost: GH₵<?php echo number_format($itemCost, 2); ?> | Profit: <span class="<?php echo $itemMarginClass; ?>">GH₵<?php echo number_format($itemProfit, 2); ?></span></div>
+                    <?php endif; ?>
                   </div>
                   <div class="item-price">GH₵<?php echo number_format($item['subtotal'], 2); ?></div>
                 </div>

@@ -28,7 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $productId = isset($_POST['product_id']) ? intval($_POST['product_id']) : null;
         $name = trim($_POST['name'] ?? '');
         $category = trim($_POST['category'] ?? '');
-        $price = floatval($_POST['price'] ?? 0);
+        $sellingPrice = floatval($_POST['selling_price'] ?? 0);
+        $costPrice = floatval($_POST['cost_price'] ?? 0);
         $quantity = intval($_POST['quantity'] ?? 0);
         $bulkQuantityThreshold = intval($_POST['bulk_quantity_threshold'] ?? 0);
         $bulkDiscountPercentage = floatval($_POST['bulk_discount_percentage'] ?? 0);
@@ -48,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $image = $imageMenu;
         }
 
-        if ($name === '' || $category === '' || $price <= 0 || $code === '') {
+        if ($name === '' || $category === '' || $sellingPrice <= 0 || $code === '') {
             $message = 'Please fill in every field with valid values.';
         } elseif ($message === '') {
             $duplicate = false;
@@ -67,7 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($product['id'] === $productId) {
                             $product['name'] = $name;
                             $product['category'] = $category;
-                            $product['price'] = $price;
+                            $product['selling_price'] = $sellingPrice;
+                            $product['cost_price'] = $costPrice;
                             $product['quantity'] = $quantity;
                             $product['bulk_quantity_threshold'] = $bulkQuantityThreshold;
                             $product['bulk_discount_percentage'] = $bulkDiscountPercentage;
@@ -87,7 +89,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'code' => $code,
                         'name' => $name,
                         'category' => $category,
-                        'price' => $price,
+                        'selling_price' => $sellingPrice,
+                        'cost_price' => $costPrice,
                         'quantity' => $quantity,
                         'bulk_quantity_threshold' => $bulkQuantityThreshold,
                         'bulk_discount_percentage' => $bulkDiscountPercentage,
@@ -307,8 +310,12 @@ $success = isset($_GET['success']);
                 <input id="product-category" name="category" type="text" required value="<?php echo htmlspecialchars($editProduct['category'] ?? ''); ?>" placeholder="e.g., Electronics" />
               </label>
               <label class="input-group">
-                <span class="field-label">Price (GH₵)</span>
-                <input id="product-price" name="price" type="number" min="0.01" step="0.01" required value="<?php echo htmlspecialchars($editProduct['price'] ?? ''); ?>" placeholder="0.00" />
+                <span class="field-label">Cost Price (GH₵)</span>
+                <input id="product-cost-price" name="cost_price" type="number" min="0" step="0.01" required value="<?php echo htmlspecialchars($editProduct['cost_price'] ?? '0'); ?>" placeholder="0.00" />
+              </label>
+              <label class="input-group">
+                <span class="field-label">Selling Price (GH₵)</span>
+                <input id="product-selling-price" name="selling_price" type="number" min="0.01" step="0.01" required value="<?php echo htmlspecialchars($editProduct['selling_price'] ?? ''); ?>" placeholder="0.00" />
               </label>
               <label class="input-group">
                 <span class="field-label">Barcode</span>
@@ -390,7 +397,20 @@ $success = isset($_GET['success']);
                     </form>
                   </div>
                 </div>
-                <div class="admin-price"><?php echo htmlspecialchars(number_format($product['price'], 2)); ?></div>
+                <div class="admin-price">
+                  <div>Selling: GH₵<?php echo htmlspecialchars(number_format($product['selling_price'], 2)); ?></div>
+                  <?php if ($user['role'] === 'admin'): ?>
+                    <div style="font-size:0.75rem;color:#64748b;">Cost: GH₵<?php echo htmlspecialchars(number_format($product['cost_price'], 2)); ?></div>
+                    <?php
+                      $margin = $product['selling_price'] - $product['cost_price'];
+                      $marginPercent = $product['selling_price'] > 0 ? round(($margin / $product['selling_price']) * 100, 1) : 0;
+                      $marginClass = $margin >= 0 ? 'text-success' : 'text-error';
+                    ?>
+                    <div class="<?php echo $marginClass; ?>" style="font-size:0.8rem;font-weight:600;">
+                      Margin: GH₵<?php echo htmlspecialchars(number_format($margin, 2)); ?> (<?php echo htmlspecialchars($marginPercent); ?>%)
+                    </div>
+                  <?php endif; ?>
+                </div>
               </div>
               <div class="admin-actions">
                 <a class="tertiary" href="admin.php?edit=<?php echo $product['id']; ?>">Edit</a>

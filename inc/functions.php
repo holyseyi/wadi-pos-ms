@@ -53,13 +53,30 @@ function initialize_database(PDO $db): void {
             code TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
             category TEXT NOT NULL,
-            price REAL NOT NULL,
+            selling_price REAL NOT NULL DEFAULT 0,
+            cost_price REAL NOT NULL DEFAULT 0,
             image TEXT NOT NULL,
             quantity INTEGER NOT NULL DEFAULT 0,
             bulk_quantity_threshold INTEGER NOT NULL DEFAULT 0,
             bulk_discount_percentage REAL NOT NULL DEFAULT 0
         )'
     );
+
+    // Migrate existing databases: add selling_price and cost_price if missing
+    try {
+        $db->exec('ALTER TABLE products ADD COLUMN selling_price REAL');
+    } catch (Exception $e) {
+        // Column might already exist, ignore error
+    }
+    try {
+        $db->exec('ALTER TABLE products ADD COLUMN cost_price REAL');
+    } catch (Exception $e) {
+        // Column might already exist, ignore error
+    }
+
+    // Migrate old price data to selling_price and keep price column in sync
+    $db->exec('UPDATE products SET selling_price = price WHERE selling_price IS NULL AND price IS NOT NULL');
+    $db->exec('UPDATE products SET price = selling_price WHERE price IS NULL');
 
     // Add quantity column if it doesn't exist (for existing databases)
     try {
@@ -211,13 +228,15 @@ function initialize_database(PDO $db): void {
     $stmt = $db->query('SELECT COUNT(*) FROM products');
     if ((int) $stmt->fetchColumn() === 0) {
         $defaultProducts = get_default_products();
-        $insert = $db->prepare('INSERT INTO products (code, name, category, price, image) VALUES (:code, :name, :category, :price, :image)');
+        $insert = $db->prepare('INSERT INTO products (code, name, category, price, selling_price, cost_price, image) VALUES (:code, :name, :category, :price, :selling_price, :cost_price, :image)');
         foreach ($defaultProducts as $product) {
             $insert->execute([
                 ':code' => $product['code'],
                 ':name' => $product['name'],
                 ':category' => $product['category'],
-                ':price' => $product['price'],
+                ':price' => $product['selling_price'],
+                ':selling_price' => $product['selling_price'],
+                ':cost_price' => $product['cost_price'],
                 ':image' => $product['image'],
             ]);
         }
@@ -232,21 +251,21 @@ function get_default_products(): array {
     }
 
     return [
-        ['code' => '1001', 'name' => 'Espresso', 'category' => 'Beverage', 'price' => 3.5, 'image' => 'images/uploads/asano.jpg', 'quantity' => 50],
-        ['code' => '1002', 'name' => 'Cappuccino', 'category' => 'Beverage', 'price' => 4.5, 'image' => 'images/uploads/asano.jpg', 'quantity' => 45],
-        ['code' => '1003', 'name' => 'Latte', 'category' => 'Beverage', 'price' => 4.75, 'image' => 'images/uploads/asano.jpg', 'quantity' => 40],
-        ['code' => '2001', 'name' => 'Blueberry Muffin', 'category' => 'Bakery', 'price' => 2.95, 'image' => 'images/bakery.svg', 'quantity' => 25],
-        ['code' => '2002', 'name' => 'Breakfast Sandwich', 'category' => 'Food', 'price' => 6.25, 'image' => 'images/food.svg', 'quantity' => 15],
-        ['code' => '2003', 'name' => 'Bagel', 'category' => 'Bakery', 'price' => 2.75, 'image' => 'images/bakery.svg', 'quantity' => 30],
-        ['code' => '1004', 'name' => 'Cold Brew', 'category' => 'Beverage', 'price' => 4.0, 'image' => 'images/uploads/asano.jpg', 'quantity' => 35],
-        ['code' => '1005', 'name' => 'Chai Latte', 'category' => 'Beverage', 'price' => 4.65, 'image' => 'images/uploads/asano.jpg', 'quantity' => 20],
-        ['code' => '2004', 'name' => 'Croissant', 'category' => 'Bakery', 'price' => 3.25, 'image' => 'images/bakery.svg', 'quantity' => 28],
-        ['code' => '2005', 'name' => 'Avocado Toast', 'category' => 'Food', 'price' => 7.5, 'image' => 'images/food.svg', 'quantity' => 12],
+        ['code' => '1001', 'name' => 'Espresso', 'category' => 'Beverage', 'selling_price' => 3.5, 'cost_price' => 1.2, 'image' => 'images/uploads/asano.jpg', 'quantity' => 50],
+        ['code' => '1002', 'name' => 'Cappuccino', 'category' => 'Beverage', 'selling_price' => 4.5, 'cost_price' => 1.8, 'image' => 'images/uploads/asano.jpg', 'quantity' => 45],
+        ['code' => '1003', 'name' => 'Latte', 'category' => 'Beverage', 'selling_price' => 4.75, 'cost_price' => 2.0, 'image' => 'images/uploads/asano.jpg', 'quantity' => 40],
+        ['code' => '2001', 'name' => 'Blueberry Muffin', 'category' => 'Bakery', 'selling_price' => 2.95, 'cost_price' => 1.0, 'image' => 'images/bakery.svg', 'quantity' => 25],
+        ['code' => '2002', 'name' => 'Breakfast Sandwich', 'category' => 'Food', 'selling_price' => 6.25, 'cost_price' => 2.5, 'image' => 'images/food.svg', 'quantity' => 15],
+        ['code' => '2003', 'name' => 'Bagel', 'category' => 'Bakery', 'selling_price' => 2.75, 'cost_price' => 0.9, 'image' => 'images/bakery.svg', 'quantity' => 30],
+        ['code' => '1004', 'name' => 'Cold Brew', 'category' => 'Beverage', 'selling_price' => 4.0, 'cost_price' => 1.5, 'image' => 'images/uploads/asano.jpg', 'quantity' => 35],
+        ['code' => '1005', 'name' => 'Chai Latte', 'category' => 'Beverage', 'selling_price' => 4.65, 'cost_price' => 1.7, 'image' => 'images/uploads/asano.jpg', 'quantity' => 20],
+        ['code' => '2004', 'name' => 'Croissant', 'category' => 'Bakery', 'selling_price' => 3.25, 'cost_price' => 1.1, 'image' => 'images/bakery.svg', 'quantity' => 28],
+        ['code' => '2005', 'name' => 'Avocado Toast', 'category' => 'Food', 'selling_price' => 7.5, 'cost_price' => 3.0, 'image' => 'images/food.svg', 'quantity' => 12],
     ];
 }
 
 function load_products(): array {
-    $stmt = get_database()->query('SELECT id, code, name, category, price, image, quantity, bulk_quantity_threshold, bulk_discount_percentage FROM products ORDER BY id');
+    $stmt = get_database()->query('SELECT id, code, name, category, selling_price, cost_price, image, quantity, bulk_quantity_threshold, bulk_discount_percentage FROM products ORDER BY id');
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -305,7 +324,7 @@ function save_products(array $products): bool {
 
     $db->exec('DELETE FROM products');
 
-    $insert = $db->prepare('INSERT INTO products (id, code, name, category, price, image, quantity, bulk_quantity_threshold, bulk_discount_percentage) VALUES (:id, :code, :name, :category, :price, :image, :quantity, :bulk_quantity_threshold, :bulk_discount_percentage)');
+        $insert = $db->prepare('INSERT INTO products (id, code, name, category, price, selling_price, cost_price, image, quantity, bulk_quantity_threshold, bulk_discount_percentage) VALUES (:id, :code, :name, :category, :price, :selling_price, :cost_price, :image, :quantity, :bulk_quantity_threshold, :bulk_discount_percentage)');
     $nextId = 1;
 
     foreach ($products as $product) {
@@ -318,7 +337,9 @@ function save_products(array $products): bool {
             ':code' => $product['code'],
             ':name' => $product['name'],
             ':category' => $product['category'],
-            ':price' => $product['price'],
+            ':price' => floatval($product['selling_price'] ?? 0),
+            ':selling_price' => floatval($product['selling_price'] ?? 0),
+            ':cost_price' => floatval($product['cost_price'] ?? 0),
             ':image' => $product['image'],
             ':quantity' => $quantity,
             ':bulk_quantity_threshold' => intval($product['bulk_quantity_threshold'] ?? 0),
@@ -495,11 +516,11 @@ function save_order(array $cart, string $username, array $credit = []): ?int {
             return null; // Insufficient stock
         }
 
-        $unitPrice = $product['price'];
+        $unitPrice = $product['selling_price'];
         $bulkThreshold = intval($product['bulk_quantity_threshold'] ?? 0);
         $bulkDiscountPercent = floatval($product['bulk_discount_percentage'] ?? 0);
         if ($bulkThreshold > 0 && $bulkDiscountPercent > 0 && $quantity >= $bulkThreshold) {
-            $unitPrice = round($product['price'] * (1 - $bulkDiscountPercent / 100), 2);
+            $unitPrice = round($product['selling_price'] * (1 - $bulkDiscountPercent / 100), 2);
         }
 
         $subtotal = round($unitPrice * $quantity, 2);
@@ -509,7 +530,7 @@ function save_order(array $cart, string $username, array $credit = []): ?int {
             'product_id' => $productId,
             'name' => $product['name'],
             'price' => $unitPrice,
-            'original_price' => $product['price'],
+            'original_price' => $product['selling_price'],
             'quantity' => $quantity,
             'subtotal' => $subtotal,
             'bulk_discount_applied' => $bulkThreshold > 0 && $bulkDiscountPercent > 0 && $quantity >= $bulkThreshold,
@@ -798,7 +819,7 @@ function generate_receipt_content(int $orderId, array $cart, array $credit = [])
         $bulkDiscountPercent = floatval($product['bulk_discount_percentage'] ?? 0);
         $bulkApplied = $bulkThreshold > 0 && $bulkDiscountPercent > 0 && $quantity >= $bulkThreshold;
 
-        $unitPrice = $bulkApplied ? round($product['price'] * (1 - $bulkDiscountPercent / 100), 2) : $product['price'];
+        $unitPrice = $bulkApplied ? round($product['selling_price'] * (1 - $bulkDiscountPercent / 100), 2) : $product['selling_price'];
         $itemTotal = round($unitPrice * $quantity, 2);
         $subtotal += $itemTotal;
 
@@ -817,7 +838,7 @@ function generate_receipt_content(int $orderId, array $cart, array $credit = [])
         }
 
         if ($bulkApplied) {
-            $savings = round(($product['price'] - $unitPrice) * $quantity, 2);
+            $savings = round(($product['selling_price'] - $unitPrice) * $quantity, 2);
             $lines[] = sprintf(
                 "  %-{$itemWidth}s %3s %9s",
                 "  " . $quantity . "x@" . $unitPrice . "ea",

@@ -1,10 +1,11 @@
-/*[
+[
   {
     "id": 1,
     "code": "1001",
     "name": "Espresso",
     "category": "Beverage",
-    "price": 3.5,
+    "selling_price": 3.5,
+    "cost_price": 1.2,
     "image": "images/uploads/asano.jpg",
     "quantity": 50
   },
@@ -13,7 +14,8 @@
     "code": "1002",
     "name": "Cappuccino",
     "category": "Beverage",
-    "price": 4.5,
+    "selling_price": 4.5,
+    "cost_price": 1.8,
     "image": "images/uploads/asano.jpg",
     "quantity": 45
   },
@@ -22,7 +24,8 @@
     "code": "1003",
     "name": "Latte",
     "category": "Beverage",
-    "price": 4.75,
+    "selling_price": 4.75,
+    "cost_price": 2.0,
     "image": "images/uploads/asano.jpg",
     "quantity": 40
   },
@@ -31,7 +34,8 @@
     "code": "2001",
     "name": "Blueberry Muffin",
     "category": "Bakery",
-    "price": 2.95,
+    "selling_price": 2.95,
+    "cost_price": 1.0,
     "image": "images/bakery.svg",
     "quantity": 25
   },
@@ -40,7 +44,8 @@
     "code": "2002",
     "name": "Breakfast Sandwich",
     "category": "Food",
-    "price": 6.25,
+    "selling_price": 6.25,
+    "cost_price": 2.5,
     "image": "images/food.svg",
     "quantity": 15
   },
@@ -49,7 +54,8 @@
     "code": "2003",
     "name": "Bagel",
     "category": "Bakery",
-    "price": 2.75,
+    "selling_price": 2.75,
+    "cost_price": 0.9,
     "image": "images/bakery.svg",
     "quantity": 30
   },
@@ -58,7 +64,8 @@
     "code": "1004",
     "name": "Cold Brew",
     "category": "Beverage",
-    "price": 4.0,
+    "selling_price": 4.0,
+    "cost_price": 1.5,
     "image": "images/uploads/asano.jpg",
     "quantity": 35
   },
@@ -67,7 +74,8 @@
     "code": "1005",
     "name": "Chai Latte",
     "category": "Beverage",
-    "price": 4.65,
+    "selling_price": 4.65,
+    "cost_price": 1.7,
     "image": "images/uploads/asano.jpg",
     "quantity": 20
   },
@@ -76,7 +84,8 @@
     "code": "2004",
     "name": "Croissant",
     "category": "Bakery",
-    "price": 3.25,
+    "selling_price": 3.25,
+    "cost_price": 1.1,
     "image": "images/bakery.svg",
     "quantity": 28
   },
@@ -85,8 +94,9 @@
     "code": "2005",
     "name": "Avocado Toast",
     "category": "Food",
-    "price": 7.5,
+    "selling_price": 7.5,
+    "cost_price": 3.0,
     "image": "images/food.svg",
     "quantity": 12
   }
-]*/
+]

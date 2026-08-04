@@ -89,17 +89,21 @@ if ($user['role'] !== 'admin') {
 if ($period === 'all') {
     $query = 'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
                      o.username, o.total, o.created_at, o.status,
-                     r.return_status, r.receipt_content
-              FROM order_items oi
-              JOIN orders o ON o.id = oi.order_id
-              LEFT JOIN receipts r ON r.order_id = o.id';
-} else {
-    $query = 'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
-                     o.username, o.total, o.created_at, o.status,
-                     r.return_status, r.receipt_content
+                     r.return_status, r.receipt_content,
+                     p.cost_price
               FROM order_items oi
               JOIN orders o ON o.id = oi.order_id
               LEFT JOIN receipts r ON r.order_id = o.id
+              LEFT JOIN products p ON p.id = oi.product_id';
+} else {
+    $query = 'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
+                     o.username, o.total, o.created_at, o.status,
+                     r.return_status, r.receipt_content,
+                     p.cost_price
+              FROM order_items oi
+              JOIN orders o ON o.id = oi.order_id
+              LEFT JOIN receipts r ON r.order_id = o.id
+              LEFT JOIN products p ON p.id = oi.product_id
               WHERE o.created_at >= :start_date AND o.created_at <= :end_date';
 }
 
@@ -149,6 +153,7 @@ $totalItems = 0;
 $returnedSales = 0;
 $returnedRevenue = 0;
 $returnedItems = 0;
+$totalCost = 0;
 
 foreach ($groupedSales as $order) {
     $totalRevenue += $order['total'];
@@ -158,9 +163,13 @@ foreach ($groupedSales as $order) {
         $returnedRevenue += $order['total'];
         $returnedItems += count($order['items']);
     }
+    foreach ($order['items'] as $item) {
+        $totalCost += ($item['cost_price'] ?? 0) * $item['quantity'];
+    }
 }
 
 $netRevenue = $totalRevenue - $returnedRevenue;
+$profitLoss = $user['role'] === 'admin' ? $netRevenue - $totalCost : 0;
 
 // Get inventory status
 $inventory = $db->query('SELECT * FROM products ORDER BY name')->fetchAll(PDO::FETCH_ASSOC);
@@ -201,7 +210,7 @@ foreach ($creditSales as $cs) {
 // Stock movement summary
 $stockIn = array_sum(array_map(fn($m) => $m['movement_type'] === 'in' ? $m['quantity'] : 0, $stockMovements));
 $stockOut = array_sum(array_map(fn($m) => $m['movement_type'] === 'out' ? $m['quantity'] : 0, $stockMovements));
-$currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['price'], $inventory));
+$currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * ($p['selling_price'] ?? $p['price']), $inventory));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -498,6 +507,14 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['pric
         <div class="stat-label">Inventory Value</div>
         <div class="stat-value">GH₵<?php echo number_format($currentInventoryValue, 2); ?></div>
       </div>
+      <?php if ($user['role'] === 'admin'): ?>
+        <div class="stat-item">
+          <div class="stat-label">Profit / Loss</div>
+          <div class="stat-value <?php echo $profitLoss >= 0 ? 'positive' : 'negative'; ?>">
+            GH₵<?php echo number_format($profitLoss, 2); ?>
+          </div>
+        </div>
+      <?php endif; ?>
     </div>
 
     <!-- Stock Movements Ledger -->
@@ -556,7 +573,11 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['pric
               <th>Product</th>
               <th>Code</th>
               <th>Category</th>
-              <th>Price</th>
+              <th>Selling Price</th>
+              <?php if ($user['role'] === 'admin'): ?>
+                <th>Cost Price</th>
+                <th>Margin</th>
+              <?php endif; ?>
               <th>In Stock</th>
               <th>Value</th>
             </tr>
@@ -567,7 +588,18 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['pric
                 <td style="font-weight:600;"><?php echo htmlspecialchars($product['name']); ?></td>
                 <td><?php echo htmlspecialchars($product['code']); ?></td>
                 <td><?php echo htmlspecialchars($product['category']); ?></td>
-                <td>GH₵<?php echo htmlspecialchars(number_format($product['price'], 2)); ?></td>
+                <td>GH₵<?php echo htmlspecialchars(number_format($product['selling_price'], 2)); ?></td>
+                <?php if ($user['role'] === 'admin'): ?>
+                  <td>GH₵<?php echo htmlspecialchars(number_format($product['cost_price'], 2)); ?></td>
+                  <?php
+                    $margin = $product['selling_price'] - $product['cost_price'];
+                    $marginPercent = $product['selling_price'] > 0 ? round(($margin / $product['selling_price']) * 100, 1) : 0;
+                    $marginClass = $margin >= 0 ? 'text-success' : 'text-error';
+                  ?>
+                  <td class="<?php echo $marginClass; ?>">
+                    GH₵<?php echo htmlspecialchars(number_format($margin, 2)); ?> (<?php echo htmlspecialchars($marginPercent); ?>%)
+                  </td>
+                <?php endif; ?>
                 <td>
                   <?php if ($product['quantity'] <= 0): ?>
                     <span style="color:#dc2626;font-weight:700;">Out of stock</span>
@@ -575,7 +607,7 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * $p['pric
                     <span style="color:#059669;font-weight:700;"><?php echo htmlspecialchars($product['quantity']); ?></span>
                   <?php endif; ?>
                 </td>
-                <td>GH₵<?php echo htmlspecialchars(number_format($product['quantity'] * $product['price'], 2)); ?></td>
+                <td>GH₵<?php echo htmlspecialchars(number_format($product['quantity'] * $product['selling_price'], 2)); ?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>

@@ -330,8 +330,7 @@ button {
 
 .brand-image {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
   display: block;
 }
 
@@ -2011,11 +2010,6 @@ button.danger:hover {
     max-width: 100%;
   }
 
-  .brand-image {
-    max-height: 180px;
-    object-position: center;
-  }
-
   .login-content {
     padding: 24px 20px;
   }
@@ -2311,10 +2305,6 @@ button.danger:hover {
     padding: 20px 16px;
   }
 
-  .brand-image {
-    max-height: 140px;
-  }
-
   .login-content > h1 {
     font-size: 22px;
   }
@@ -2382,10 +2372,6 @@ button.danger:hover {
 
   .login-content {
     padding: 16px 12px;
-  }
-
-  .brand-image {
-    max-height: 120px;
   }
 
   .login-content > h1 {

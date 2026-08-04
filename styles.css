@@ -1789,6 +1789,11 @@ button.danger:hover {
 /* Tablet and below (<=1024px): collapse nav into hamburger and stack grids.
    Covers iPad Pro 11", iPad Air, Surface Pro, etc. */
 @media (max-width: 1024px) {
+  .login-card {
+    grid-template-columns: 1fr;
+    max-width: 100%;
+  }
+
   .main-grid {
     gap: 20px;
   }
@@ -1995,6 +2000,36 @@ button.danger:hover {
   .user-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .login-screen {
+    padding: 16px;
+  }
+
+  .login-card {
+    border-radius: 20px;
+    max-width: 100%;
+  }
+
+  .brand-image {
+    max-height: 180px;
+    object-position: center;
+  }
+
+  .login-content {
+    padding: 24px 20px;
+  }
+
+  .login-content > h1 {
+    font-size: 24px;
+  }
+
+  .login-hint {
+    font-size: 0.8rem;
+  }
+
+  .login-hint strong {
+    font-size: 0.85rem;
   }
 }
 
@@ -2267,6 +2302,30 @@ button.danger:hover {
     width: 100%;
     padding: 10px 14px;
   }
+
+  .login-screen {
+    padding: 12px;
+  }
+
+  .login-content {
+    padding: 20px 16px;
+  }
+
+  .brand-image {
+    max-height: 140px;
+  }
+
+  .login-content > h1 {
+    font-size: 22px;
+  }
+
+  .login-hint {
+    font-size: 0.75rem;
+  }
+
+  .login-hint strong {
+    font-size: 0.8rem;
+  }
 }
 
 /* Ultra-compact phones (max-width: 320px):
@@ -2315,6 +2374,26 @@ button.danger:hover {
   .form-actions button,
   .form-actions a {
     width: 100%;
+  }
+
+  .login-screen {
+    padding: 8px;
+  }
+
+  .login-content {
+    padding: 16px 12px;
+  }
+
+  .brand-image {
+    max-height: 120px;
+  }
+
+  .login-content > h1 {
+    font-size: 20px;
+  }
+
+  .login-hint {
+    font-size: 0.7rem;
   }
 }
 

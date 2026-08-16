@@ -67,7 +67,7 @@ Section "Install"
   ; Also exclude the installer binary itself, otherwise a rebuild over an
   ; existing pos_installer.exe would package the old installer inside the new one.
   ; Exclude the local git history as well: it is not needed at runtime.
-  File /r /x "data" /x "pos_installer.exe" /x ".git" /x ".kilo" "*.*"
+  File /r /x "data" /x "pos_installer.exe" /x ".git" /x ".kilo" /x ".github" /x "tests" "*.*"
   IfFileExists "$WINDIR\System32\VCRUNTIME140.dll" vcruntime_ok
     MessageBox MB_ICONINFORMATION|MB_OK "The Visual C++ runtime is required to run bundled PHP. If it is missing, install vc_redist.x64.exe from the install folder or from Microsoft."
   vcruntime_ok:

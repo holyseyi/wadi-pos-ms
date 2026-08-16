@@ -1,10 +1,12 @@
 <?php
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
 require_once __DIR__ . '/inc/functions.php';
 require_admin();
 
 $user = current_user();
+
+$message = '';
+$error = '';
+$editProduct = null;
 
 try {
     $posName = get_pos_name();
@@ -15,11 +17,8 @@ try {
     $users = get_all_users();
     $loginEvents = load_login_events();
 } catch (Exception $e) {
-    die('Database error: ' . $e->getMessage());
+    $error = 'Unable to load admin data. Please try again later.';
 }
-$message = '';
-$error = '';
-$editProduct = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -158,10 +157,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $userId = intval($_POST['user_id'] ?? 0);
         if ($userId > 0) {
             if (delete_user($userId)) {
-                $message = 'User account deleted successfully.';
+                header('Location: admin.php?success=1');
+                exit;
             } else {
                 $error = 'Failed to delete user account.';
             }
+        } else {
+            $error = 'Invalid user selected for deletion.';
         }
     }
 
@@ -257,6 +259,7 @@ $success = isset($_GET['success']);
         <a href="balance_sheet.php" class="secondary">Balance sheet</a>
         <?php if ($user['role'] === 'admin'): ?>
           <a href="admin.php" class="secondary">Admin dashboard</a>
+          <a href="activation_status.php" class="secondary">Activation status</a>
         <?php endif; ?>
         <a href="logout.php" class="tertiary">Logout</a>
       </div>
@@ -688,5 +691,10 @@ $success = isset($_GET['success']);
     });
   </script>
   <script src="nav.js"></script>
+  <footer class="app-footer">
+    Designed by Ten12 Tech&copy;<br />
+    &copy;2026<br />
+    Contact: +233 55 850 4111
+  </footer>
 </body>
 </html>

@@ -1,0 +1,107 @@
+name: Windows installer smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'inc/functions.php'
+      - 'login.php'
+      - 'activate.php'
+      - 'activation_status.php'
+      - 'pos_installer.nsi'
+      - 'installer_config.ini'
+      - 'tests/**'
+      - '.github/workflows/windows-smoke.yml'
+  pull_request:
+    paths:
+      - 'inc/functions.php'
+      - 'login.php'
+      - 'activate.php'
+      - 'activation_status.php'
+      - 'pos_installer.nsi'
+      - 'installer_config.ini'
+      - 'tests/**'
+      - '.github/workflows/windows-smoke.yml'
+
+jobs:
+  build-and-smoke-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis -y --no-progress --limit-output
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          # Make sure the chocolatey shim dir (makensis) is on PATH for this step.
+          $env:Path = 'C:\ProgramData\chocolatey\bin;' + $env:Path
+          makensis -VERSION
+          cmd /c build_windows_installer.bat
+          if (-not (Test-Path (Join-Path $env:GITHUB_WORKSPACE 'pos_installer.exe'))) {
+            throw 'pos_installer.exe was not produced'
+          }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos_installer
+          path: pos_installer.exe
+          if-no-files-found: error
+
+      - name: Silent install
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:GITHUB_WORKSPACE 'pos_installer.exe'
+          $p = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Installer exit code: $($p.ExitCode)" }
+          $installDir = Join-Path $env:LOCALAPPDATA 'DziePOSMS'
+          if (-not (Test-Path (Join-Path $installDir 'login.php'))) {
+            throw "App not installed at $installDir"
+          }
+          Write-Host "Installed to $installDir"
+          "INSTALL_DIR=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Start the app (built-in PHP server)
+        shell: pwsh
+        run: |
+          $php = Join-Path $env:INSTALL_DIR 'php\php.exe'
+          if (-not (Test-Path $php)) { throw "Bundled PHP not found: $php" }
+          $proc = Start-Process -FilePath $php `
+            -ArgumentList '-S','127.0.0.1:8099' `
+            -WorkingDirectory $env:INSTALL_DIR `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput "$env:RUNNER_TEMP\php-server.log" `
+            -RedirectStandardError "$env:RUNNER_TEMP\php-server.err.log" `
+            -PassThru
+          Start-Sleep -Seconds 4
+          try {
+            $resp = Invoke-WebRequest -Uri 'http://127.0.0.1:8099/login.php' -UseBasicParsing -TimeoutSec 15
+            Write-Host "login.php HTTP $($resp.StatusCode)"
+          } catch {
+            Get-Content "$env:RUNNER_TEMP\php-server.log" -ErrorAction SilentlyContinue
+            Get-Content "$env:RUNNER_TEMP\php-server.err.log" -ErrorAction SilentlyContinue
+            throw "App server did not come up: $_"
+          }
+          "PHP_PID=$($proc.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Run activation smoke test
+        shell: pwsh
+        run: |
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'tests\smoke_test.php') `
+            -Destination (Join-Path $env:INSTALL_DIR 'smoke_test.php') -Force
+          $php = Join-Path $env:INSTALL_DIR 'php\php.exe'
+          & $php (Join-Path $env:INSTALL_DIR 'smoke_test.php')
+          if ($LASTEXITCODE -ne 0) { throw "Smoke test failed with exit code $LASTEXITCODE" }
+
+      - name: Stop app server
+        shell: pwsh
+        if: always()
+        run: |
+          if ($env:PHP_PID) {
+            Stop-Process -Id $env:PHP_PID -Force -ErrorAction SilentlyContinue
+          }

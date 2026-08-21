@@ -212,20 +212,29 @@ function migrate_legacy_backups(string $legacyDbPath, string $targetDataDir): vo
     }
 }
 
-function get_database(): PDO {
-    static $pdo = null;
-    if ($pdo !== null) {
-        return $pdo;
+function get_database(): PDO|TursoDatabase {
+    static $db = null;
+    if ($db !== null) {
+        return $db;
     }
 
-    $path = get_db_path();
-    $pdo = new PDO('sqlite:' . $path);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    initialize_database($pdo);
-    return $pdo;
+    $tursoUrl = getenv('TURSO_DATABASE_URL');
+    $tursoToken = getenv('TURSO_AUTH_TOKEN');
+
+    if ($tursoUrl && $tursoToken) {
+        require_once __DIR__ . '/turso_database.php';
+        $db = new TursoDatabase($tursoUrl, $tursoToken);
+    } else {
+        $path = get_db_path();
+        $db = new PDO('sqlite:' . $path);
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    }
+
+    initialize_database($db);
+    return $db;
 }
 
-function initialize_database(PDO $db): void {
+function initialize_database(PDO|TursoDatabase $db): void {
     $db->exec(
         'CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY,
@@ -2167,7 +2176,7 @@ function get_order_return_summary(int $orderId): array {
     ];
 }
 
-function get_returns_map(PDO $db): array {
+function get_returns_map(PDO|TursoDatabase $db): array {
     $map = [];
     $rows = $db->query('SELECT order_id, product_id, SUM(quantity) AS qty FROM returns GROUP BY order_id, product_id')
         ->fetchAll(PDO::FETCH_ASSOC);
@@ -2483,6 +2492,10 @@ function get_trial_status(): array {
 }
 
 function backup_database(): bool {
+    // Turso is a remote database — no local file backup needed.
+    if (getenv('TURSO_DATABASE_URL')) {
+        return true;
+    }
     $dbPath = get_db_path();
     if (!file_exists($dbPath)) {
         return false;
@@ -2512,6 +2525,12 @@ function backup_database(): bool {
 }
 
 function ensure_data_files(): void {
+    // Turso is a remote database — no local file management needed.
+    if (getenv('TURSO_DATABASE_URL')) {
+        get_database();
+        return;
+    }
+
     $dbPath = get_db_path();
     $backupDir = dirname($dbPath) . DIRECTORY_SEPARATOR . 'backups';
     $backupPath = $backupDir . DIRECTORY_SEPARATOR . 'pos_backup.db';
@@ -2548,7 +2567,7 @@ function check_app_access(): void {
     }
 }
 
-function get_database_for_accounting(): PDO {
+function get_database_for_accounting(): PDO|TursoDatabase {
     return get_database();
 }
 

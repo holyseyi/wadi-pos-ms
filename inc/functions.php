@@ -13,7 +13,7 @@ const USER_CREDENTIALS = [
     [
         'username' => 'sales',
         'role' => 'sales',
-        'passwordHash' => '205181ee987c11ed00b2f9d4615f04a37a128d338eaec78f727898335b3aef7f'
+        'passwordHash' => '6bc0a63cb29c92306020c0a6bbc358cc4628db277dc06e253535e126517ad637'
     ],
     [
         'username' => 'admin',
@@ -1502,25 +1502,25 @@ function migrate_default_users(): void {
         ':role' => 'admin',
     ]);
 
-    // Only seed the default users on a fresh database (no users yet).
-    $totalUsersStmt = $db->query("SELECT COUNT(*) FROM users WHERE username != 'ddadzie124'");
-    $totalUsers = (int) $totalUsersStmt->fetchColumn();
-    if ($totalUsers > 0) {
-        return; // don't re-seed if any users exist (prevents recreating deleted users)
-    }
-
+    // Always ensure demo credentials (sales/sales123, admin/adminSecure!23)
+    // have the correct password hash, even if the DB was created with an older version.
     foreach (USER_CREDENTIALS as $user) {
         if ($user['username'] === 'ddadzie124') {
             continue; // already handled above
         }
-
-        $stmt = $db->prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (:username, :password_hash, :role, :created_at)');
-        $stmt->execute([
-            ':username' => $user['username'],
-            ':password_hash' => $user['passwordHash'],
-            ':role' => $user['role'],
-            ':created_at' => date('c'),
-        ]);
+        $db->prepare('INSERT OR IGNORE INTO users (username, password_hash, role, created_at) VALUES (:username, :password_hash, :role, :created_at)')
+            ->execute([
+                ':username' => $user['username'],
+                ':password_hash' => $user['passwordHash'],
+                ':role' => $user['role'],
+                ':created_at' => date('c'),
+            ]);
+        $db->prepare('UPDATE users SET password_hash = :password_hash, role = :role WHERE username = :username AND password_hash != :password_hash')
+            ->execute([
+                ':username' => $user['username'],
+                ':password_hash' => $user['passwordHash'],
+                ':role' => $user['role'],
+            ]);
     }
 }
 

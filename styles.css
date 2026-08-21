@@ -488,6 +488,36 @@ button {
   margin-top: 6px;
 }
 
+.demo-credentials {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.demo-credentials-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #166534;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.demo-credentials-item {
+  font-size: 0.85rem;
+  color: #15803d;
+  margin: 4px 0;
+  font-family: monospace;
+}
+
+.demo-credentials-item strong {
+  font-family: inherit;
+  color: #166534;
+}
+
 .error-text {
   color: #dc2626;
   font-weight: 600;

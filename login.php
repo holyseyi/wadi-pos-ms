@@ -107,6 +107,11 @@ $posName = get_pos_name();
             <button id="login-button" class="primary" type="submit">Sign in securely</button>
             <p class="error-text" aria-live="polite"><?php echo htmlspecialchars($error); ?></p>
           </form>
+          <div class="demo-credentials">
+            <p class="demo-credentials-title">Demo Credentials</p>
+            <p class="demo-credentials-item"><strong>Sales:</strong> sales / sales123</p>
+            <p class="demo-credentials-item"><strong>Admin:</strong> admin / adminSecure!23</p>
+          </div>
         <?php endif; ?>
       </div>
     </div>

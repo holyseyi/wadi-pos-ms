@@ -7,6 +7,11 @@ $posName = get_pos_name();
 $products = load_products();
 $message = '';
 $error = '';
+$trialStatus = get_trial_status();
+$trialDeadline = $trialStatus['deadline'] ?? 0;
+$daysRemaining = $trialStatus['days_remaining'] ?? 7;
+$expiringSoonSummary = get_expiring_soon_summary(7);
+$expiredSummary = get_expired_stock_summary();
 
 // Handle delete sale request (Sales rep can only delete own sales, admin can delete any)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -29,6 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             } else {
                 if (delete_sale($saleId, $user['username'])) {
                     $message = 'Sale deleted successfully.';
+                    log_activity($user['username'], $user['role'], 'sale_deleted', 'Deleted sale #' . str_pad((string)$saleId, 8, '0', STR_PAD_LEFT));
                 } else {
                     $error = 'Failed to delete sale.';
                 }
@@ -41,6 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if ($receiptId > 0 && in_array($status, ['Active', 'Returned'], true)) {
             if (update_receipt_status($receiptId, $status)) {
                 $message = 'Receipt status updated successfully.';
+                log_activity($user['username'], $user['role'], 'return_status_updated', 'Updated receipt #' . str_pad((string)$receiptId, 8, '0', STR_PAD_LEFT) . ' status to ' . $status);
             } else {
                 $error = 'Failed to update receipt status.';
             }
@@ -86,6 +93,13 @@ if ($user['role'] === 'admin') {
   <title><?php echo htmlspecialchars($posName); ?> - Sales Register</title>
   <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <link rel="stylesheet" href="styles.css" />
+  <style id="theme-overrides">
+    :root {
+      --theme-primary: <?php echo htmlspecialchars(get_theme_primary_color()); ?>;
+      --theme-secondary: <?php echo htmlspecialchars(get_theme_secondary_color()); ?>;
+      --theme-bg: <?php echo htmlspecialchars(get_theme_background_color()); ?>;
+    }
+  </style>
 </head>
 <body data-page="sales">
   <div class="app-shell">
@@ -94,7 +108,7 @@ if ($user['role'] === 'admin') {
         <img class="brand-icon" src="<?php echo htmlspecialchars(get_trademark_src()); ?>" alt="Trademark" />
         <div>
           <h1><?php echo htmlspecialchars($posName); ?></h1>
-          <p class="subtitle">Secure sales register for your team.</p>
+          <p class="subtitle">Sales register</p>
         </div>
       </div>
 
@@ -118,6 +132,39 @@ if ($user['role'] === 'admin') {
       </div>
     </header>
 
+    <?php if (is_app_activated()): ?>
+      <div class="deadline-banner licensed-banner">
+        <span class="deadline-label">License Status:</span>
+        <strong class="deadline-count">Licensed — All Features Unlocked</strong>
+      </div>
+    <?php else: ?>
+      <div class="deadline-banner" id="deadline-banner" data-deadline="<?php echo $trialDeadline; ?>">
+        <span class="deadline-label">Trial expires in</span>
+        <strong class="deadline-count" id="deadline-count"><?php echo htmlspecialchars(format_duration(max(0, $trialDeadline - time()))); ?></strong>
+      </div>
+    <?php endif; ?>
+
+    <?php if ($expiredSummary['count'] > 0): ?>
+      <div class="expiry-banner expiry-banner-expired">
+        <span class="expiry-banner-icon">🔴</span>
+        <span class="expiry-banner-text">
+          <strong><?php echo htmlspecialchars($expiredSummary['count']); ?> expired product(s)</strong> blocked from sales
+          — GH₵<?php echo htmlspecialchars(number_format($expiredSummary['total_loss'], 2)); ?> stock loss
+        </span>
+        <a href="admin.php" class="expiry-banner-link">View in Admin</a>
+      </div>
+    <?php endif; ?>
+    <?php if ($expiringSoonSummary['count'] > 0): ?>
+      <div class="expiry-banner expiry-banner-warning">
+        <span class="expiry-banner-icon">⏰</span>
+        <span class="expiry-banner-text">
+          <strong><?php echo htmlspecialchars($expiringSoonSummary['count']); ?> product(s) expiring within 7 days</strong>
+          — <?php echo htmlspecialchars($expiringSoonSummary['total_items']); ?> unit(s) at risk
+        </span>
+        <a href="admin.php" class="expiry-banner-link">Manage</a>
+      </div>
+    <?php endif; ?>
+
     <main class="main-grid">
       <div class="dashboard-grid">
         <article class="panel overview-panel">
@@ -125,7 +172,6 @@ if ($user['role'] === 'admin') {
             <span class="badge">Sales</span>
             <h2>Quick register</h2>
           </div>
-          <p class="panel-copy">Scan barcodes, search inventory, and complete transactions quickly.</p>
           <div class="highlight-row">
             <div>
               <span class="metric-label">User</span>
@@ -141,7 +187,7 @@ if ($user['role'] === 'admin') {
         <article class="panel barcode-panel">
           <div class="panel-header">
             <h2>Barcode scanner</h2>
-            <span class="hint">Enter a product code or scan with a camera.</span>
+            <span class="hint">Enter a product code or scan with camera.</span>
           </div>
           <div class="barcode-fields">
             <label class="input-group">
@@ -153,7 +199,6 @@ if ($user['role'] === 'admin') {
               <button id="camera-button" class="tertiary" type="button">Scan with camera</button>
             </div>
           </div>
-          <p id="barcode-message" class="small-text">Camera scanning is supported in modern browsers.</p>
         </article>
       </div>
 
@@ -187,34 +232,33 @@ if ($user['role'] === 'admin') {
         <div class="panel-header panel-header-row">
           <div class="panel-header-left">
             <h2><?php echo $user['role'] === 'admin' ? 'All Sales & Returns' : 'My Sales'; ?></h2>
-            <span class="hint"><?php echo $user['role'] === 'admin' ? 'Manage your sales and returns' : 'Manage your sales'; ?></span>
           </div>
           <div class="panel-header-right">
             <label class="credit-toggle" title="Enable credit sale">
               <input type="checkbox" id="credit-enabled" />
-              <span>Sale on credit</span>
+              <span>Credit sale</span>
             </label>
             <div class="receipt-actions">
               <form method="post" action="sales.php">
                 <input type="hidden" name="action" value="print_current_receipt" />
-                <button type="submit" class="primary">Print Current Receipt</button>
+                <button type="submit" class="primary">Print Receipt</button>
               </form>
               <form method="post" action="sales.php">
                 <input type="hidden" name="action" value="view_current_receipt" />
-                <button type="submit" class="secondary">View Receipt</button>
+                <button type="submit" class="secondary">View</button>
               </form>
-              <a href="receipts.php" class="secondary">View All Receipts</a>
+              <a href="receipts.php" class="secondary">Receipts</a>
             </div>
           </div>
         </div>
         <div id="credit-fields" class="credit-fields" style="display:none;">
           <label class="input-group">
-            <span class="field-label">Customer Name</span>
-            <input type="text" id="credit-customer-name" placeholder="Full name" />
+            <span class="field-label">Customer</span>
+            <input type="text" id="credit-customer-name" placeholder="Name" />
           </label>
           <label class="input-group">
-            <span class="field-label">Customer Phone</span>
-            <input type="tel" id="credit-customer-phone" placeholder="Phone number" />
+            <span class="field-label">Phone</span>
+            <input type="tel" id="credit-customer-phone" placeholder="Phone" />
           </label>
         </div>
 
@@ -232,13 +276,62 @@ if ($user['role'] === 'admin') {
     </main>
   </div>
 
+  <!-- Duplicate product confirmation: shown when the same product is entered again within 1 minute -->
+  <div id="duplicate-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="duplicate-modal-title">
+    <div class="modal">
+      <h3 id="duplicate-modal-title">Already in this order</h3>
+      <p><strong id="duplicate-product-name"></strong> was entered less than a minute ago. Are you sure you want to enter it again?</p>
+      <p id="duplicate-cart-qty" class="small-text"></p>
+      <div class="modal-actions">
+        <button type="button" id="duplicate-cancel" class="secondary">No, cancel</button>
+        <button type="button" id="duplicate-confirm" class="primary">Yes, add another</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     window.pageConfig = {
       products: <?php echo json_encode($products, JSON_HEX_TAG); ?>,
       user: <?php echo json_encode($user, JSON_HEX_TAG); ?>
     };
   </script>
-  <script src="script.js"></script>
+<script>
+    (function () {
+      var banner = document.getElementById('deadline-banner');
+      if (!banner) return;
+      var deadline = parseInt(banner.getAttribute('data-deadline'), 10) * 1000;
+      var countEl = document.getElementById('deadline-count');
+      function formatRemaining(ms) {
+        var total = Math.max(0, Math.floor(ms / 1000));
+        var days = Math.floor(total / 86400);
+        var hours = Math.floor((total % 86400) / 3600);
+        var minutes = Math.floor((total % 3600) / 60);
+        var seconds = total % 60;
+        if (days > 0) return days + 'd ' + hours + 'h';
+        if (hours > 0) return hours + 'h ' + minutes + 'm';
+        if (minutes > 0) return minutes + 'm ' + seconds + 's';
+        return seconds + 's';
+      }
+
+      function tick() {
+        var diff = deadline - Date.now();
+        if (diff <= 0) {
+          countEl.textContent = 'expired';
+          return;
+        }
+        countEl.textContent = formatRemaining(diff);
+      }
+      tick();
+      setInterval(tick, 1000);
+    })();
+  </script>
+  <script src="script.js?v=20260816"></script>
   <script src="nav.js"></script>
+  <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+  <footer class="app-footer">
+    Designed by Ten12 Tech&copy;<br />
+    &copy;2026<br />
+    Contact: +233 55 850 4111
+  </footer>
 </body>
 </html>

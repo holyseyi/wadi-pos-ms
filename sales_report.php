@@ -73,7 +73,7 @@ $db = get_database();
 if ($period === 'all') {
     // No date filter for All Time
     $query = 'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
-                     o.username, o.total, o.created_at, o.status,
+                     o.username, o.total, o.created_at, o.status, o.credit, o.credit_status,
                      r.return_status, r.receipt_content,
                      p.cost_price, p.selling_price
               FROM order_items oi
@@ -82,7 +82,7 @@ if ($period === 'all') {
               LEFT JOIN products p ON p.id = oi.product_id';
 } else {
     $query = 'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
-                     o.username, o.total, o.created_at, o.status,
+                     o.username, o.total, o.created_at, o.status, o.credit, o.credit_status,
                      r.return_status, r.receipt_content,
                      p.cost_price, p.selling_price
               FROM order_items oi
@@ -135,29 +135,55 @@ foreach ($salesData as $item) {
 }
 
 // Calculate totals
-$totalSales = count($groupedSales);
-$totalRevenue = 0;
-$totalItems = 0;
-$returnedSales = 0;
-$returnedRevenue = 0;
+$totalSales = 0; // active (non-fully-returned) orders only
+$totalRevenue = 0; // gross revenue: only products payment has been made for
+$netRevenue = 0; // paid revenue after returned products are subtracted
+$totalItems = 0; // effective items sold (ordered minus returned)
 $totalCost = 0;
+$creditCostLoss = 0; // cost of unpaid credit items (actual loss while unpaid)
+$pendingCreditRevenue = 0; // revenue not yet recognized from unpaid credit items
 
-foreach ($groupedSales as $order) {
-    $totalRevenue += $order['total'];
-    $totalItems += count($order['items']);
-    if ($order['return_status'] === 'Returned') {
-        $returnedSales++;
-        $returnedRevenue += $order['total'];
-    }
-    if ($user['role'] === 'admin') {
-        foreach ($order['items'] as $item) {
-            $totalCost += ($item['cost_price'] ?? 0) * $item['quantity'];
+$returnsMap = get_returns_map($db);
+
+foreach ($groupedSales as $orderId => $order) {
+    $isCredit = (int) ($order['credit'] ?? 0);
+    $isPaid = !$isCredit || ($order['credit_status'] ?? 'Paid') === 'Paid';
+    $orderReturns = $returnsMap[$orderId] ?? [];
+    $orderQty = 0;
+    $orderReturnedQty = 0;
+
+    foreach ($order['items'] as $item) {
+        $qty = (int) $item['quantity'];
+        $returnedQty = (int) ($orderReturns[$item['product_id']] ?? 0);
+        $effectiveQty = max(0, $qty - $returnedQty);
+        $orderQty += $qty;
+        $orderReturnedQty += $returnedQty;
+
+        $unitPrice = (float) $item['price'];
+        $totalItems += $effectiveQty;
+
+        if ($isPaid) {
+            // Revenue and cost are only counted once payment has been received.
+            $totalRevenue += $qty * $unitPrice;
+            $netRevenue += $effectiveQty * $unitPrice;
+            if ($user['role'] === 'admin') {
+                $totalCost += $effectiveQty * (float) ($item['cost_price'] ?? 0);
+            }
+        } else {
+            // Conservative revenue recognition: credit sales count as a LOSS
+            // equal to the cost price until the customer pays.
+            $unitCost = (float) ($item['cost_price'] ?? 0);
+            $creditCostLoss += $effectiveQty * $unitCost;
+            $pendingCreditRevenue += $effectiveQty * $unitPrice;
         }
+    }
+
+    if (!($orderQty > 0 && $orderReturnedQty >= $orderQty)) {
+        $totalSales++;
     }
 }
 
-$netRevenue = $totalRevenue - $returnedRevenue;
-$profitLoss = $user['role'] === 'admin' ? $netRevenue - $totalCost : 0;
+$profitLoss = $user['role'] === 'admin' ? $netRevenue - $totalCost - $creditCostLoss : 0;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -171,6 +197,13 @@ $profitLoss = $user['role'] === 'admin' ? $netRevenue - $totalCost : 0;
   <title><?php echo htmlspecialchars($posName); ?> - Sales Report - <?php echo $periods[$period]; ?></title>
   <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <link rel="stylesheet" href="styles.css" />
+  <style id="theme-overrides">
+    :root {
+      --theme-primary: <?php echo htmlspecialchars(get_theme_primary_color()); ?>;
+      --theme-secondary: <?php echo htmlspecialchars(get_theme_secondary_color()); ?>;
+      --theme-bg: <?php echo htmlspecialchars(get_theme_background_color()); ?>;
+    }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -328,6 +361,13 @@ $profitLoss = $user['role'] === 'admin' ? $netRevenue - $totalCost : 0;
     </div>
     </main>
   </div>
+  <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+  <script src="script.js"></script>
   <script src="nav.js"></script>
+  <footer class="app-footer">
+    Designed by Ten12 Tech&copy;<br />
+    &copy;2026<br />
+    Contact: +233 55 850 4111
+  </footer>
 </body>
 </html>

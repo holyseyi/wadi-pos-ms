@@ -2,10 +2,36 @@ const config = window.pageConfig || {};
 const products = config.products || [];
 const checkoutEndpoint = 'checkout.php';
 
+// Only warn when the same product is entered again within this window (1 minute).
+const DUPLICATE_WINDOW_MS = 60 * 1000;
+
 const state = {
   cart: [],
-  filter: ""
+  filter: "",
+  // product id -> timestamp of the last time it was added to the cart.
+  // Deliberately NOT reset on checkout: consecutive sales of the same product
+  // within 1 minute must still warn the sales rep.
+  lastAddedAt: {}
 };
+
+// Persist the window across page reloads (same tab) so an accidental F5 between
+// orders doesn't silently clear it.
+(function restoreLastAddedAt() {
+  try {
+    const saved = sessionStorage.getItem("pos_last_added_at");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === "object") {
+        state.lastAddedAt = parsed;
+      }
+    }
+  } catch (e) {
+    // sessionStorage unavailable (e.g. privacy mode) — the window just resets on reload.
+  }
+})();
+
+// Product waiting for the user's decision in the duplicate confirmation dialog.
+let pendingDuplicateProduct = null;
 
 const elements = {
   barcodeInput: document.getElementById("barcode-input"),
@@ -27,7 +53,12 @@ const elements = {
   creditEnabled: document.getElementById("credit-enabled"),
   creditCustomerName: document.getElementById("credit-customer-name"),
   creditCustomerPhone: document.getElementById("credit-customer-phone"),
-  creditFields: document.getElementById("credit-fields")
+  creditFields: document.getElementById("credit-fields"),
+  duplicateModal: document.getElementById("duplicate-modal"),
+  duplicateProductName: document.getElementById("duplicate-product-name"),
+  duplicateCartQty: document.getElementById("duplicate-cart-qty"),
+  duplicateConfirm: document.getElementById("duplicate-confirm"),
+  duplicateCancel: document.getElementById("duplicate-cancel")
 };
 
 function formatMoney(value) {
@@ -52,14 +83,53 @@ function getCartItem(productId) {
   return state.cart.find((entry) => entry.product.id === productId);
 }
 
-function addToCart(product) {
+function commitAddToCart(product) {
   const existing = getCartItem(product.id);
   if (existing) {
     existing.quantity += 1;
   } else {
     state.cart.push({ product, quantity: 1 });
   }
+  state.lastAddedAt[product.id] = Date.now();
+  try {
+    sessionStorage.setItem("pos_last_added_at", JSON.stringify(state.lastAddedAt));
+  } catch (e) {
+    // ignore — persistence is best-effort
+  }
   renderCart();
+}
+
+function showDuplicatePrompt(product) {
+  if (!elements.duplicateModal) {
+    commitAddToCart(product);
+    return;
+  }
+
+  pendingDuplicateProduct = product;
+  elements.duplicateProductName.textContent = product.name;
+
+  const existing = getCartItem(product.id);
+  if (existing && elements.duplicateCartQty) {
+    const units = existing.quantity === 1 ? "unit" : "units";
+    elements.duplicateCartQty.textContent = `Currently in cart: ${existing.quantity} ${units}.`;
+    elements.duplicateCartQty.style.display = "";
+  } else if (elements.duplicateCartQty) {
+    elements.duplicateCartQty.style.display = "none";
+  }
+
+  elements.duplicateModal.classList.remove("hidden");
+  if (elements.duplicateConfirm) {
+    elements.duplicateConfirm.focus();
+  }
+}
+
+function addToCart(product) {
+  const lastAdded = state.lastAddedAt[product.id] || 0;
+  if (Date.now() - lastAdded < DUPLICATE_WINDOW_MS) {
+    showDuplicatePrompt(product);
+    return;
+  }
+  commitAddToCart(product);
 }
 
 function updateQuantity(productId, delta) {
@@ -79,6 +149,8 @@ function removeItem(productId) {
 
 function clearCart() {
   state.cart = [];
+  // lastAddedAt is intentionally kept: consecutive sales of the same product
+  // within 1 minute should still show the confirmation prompt.
   renderCart();
   if (elements.receiptOutput) {
     elements.receiptOutput.textContent = "Cart cleared. Ready for the next order.";
@@ -95,12 +167,35 @@ function computeTotals() {
   return { subtotal, tax, total };
 }
 
+function isProductExpired(expiryDate) {
+  if (!expiryDate) return false;
+  const expiry = new Date(expiryDate + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return expiry < today;
+}
+
+function isProductExpiringSoon(expiryDate, daysWarning) {
+  daysWarning = daysWarning || 7;
+  if (!expiryDate) return false;
+  const expiry = new Date(expiryDate + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const warning = new Date();
+  warning.setDate(warning.getDate() + daysWarning);
+  return expiry >= today && expiry <= warning;
+}
+
 function renderProducts() {
   if (!elements.productList) return;
 
   const currentProducts = window.pageConfig.products || [];
   const searchTerm = state.filter.trim().toLowerCase();
   const filteredProducts = currentProducts.filter((product) => {
+    // Block expired products from being sold
+    if (isProductExpired(product.expiry_date)) {
+      return false;
+    }
     return (
       product.name.toLowerCase().includes(searchTerm) ||
       product.category.toLowerCase().includes(searchTerm) ||
@@ -130,19 +225,36 @@ function renderProducts() {
         ? formatMoney(roundTo(product.selling_price * (1 - bulkDiscountPercent / 100), 2))
         : formatMoney(product.selling_price);
 
+      // Expiry date badge
+      let expiryBadge = '';
+      if (product.expiry_date) {
+        const expDate = new Date(product.expiry_date + 'T00:00:00');
+        const formatted = expDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        if (isProductExpiringSoon(product.expiry_date)) {
+          expiryBadge = `<div class="product-expiry expiring">⏰ Expires ${formatted}</div>`;
+        } else {
+          expiryBadge = `<div class="product-expiry valid">✓ Expires ${formatted}</div>`;
+        }
+      }
+
       return `
       <article class="product-card ${isOutOfStock ? 'out-of-stock' : ''}">
         <img src="${product.image}" alt="${product.name}" />
         <div class="product-info">
           <div class="product-name">${product.name}</div>
-          <div class="product-category">${product.category} • Code ${product.code}</div>
           <div class="product-price">${formatMoney(product.selling_price)}</div>
-          ${bulkBadge}
-          <div class="product-bulk-price">Bulk unit price: ${discountedPrice}</div>
-          <div class="product-stock ${stockClass}">${stockText}</div>
         </div>
-        <div class="product-actions">
-          <button class="${buttonClass}" data-action="add" data-id="${product.id}" ${buttonDisabled}>${isOutOfStock ? 'Out of Stock' : 'Add'}</button>
+        <div class="product-lower">
+          <div class="product-details">
+            <div class="product-category">${product.category} • Code ${product.code}</div>
+            ${expiryBadge}
+            ${bulkBadge}
+            <div class="product-bulk-price">Bulk unit price: ${discountedPrice}</div>
+            <div class="product-stock ${stockClass}">${stockText}</div>
+          </div>
+          <div class="product-actions">
+            <button class="${buttonClass}" data-action="add" data-id="${product.id}" ${buttonDisabled}>${isOutOfStock ? 'Out of Stock' : 'Add'}</button>
+          </div>
         </div>
       </article>`;
     })
@@ -256,7 +368,8 @@ function handleProductListClick(event) {
 
   const action = button.dataset.action;
   const id = Number(button.dataset.id);
-  const product = products.find((item) => item.id === id);
+  // Use the live product list so freshly refreshed stock levels are honored.
+  const product = (window.pageConfig.products || []).find((item) => item.id === id);
   if (!product) return;
 
   if (action === "add") addToCart(product);
@@ -279,8 +392,60 @@ function showBarcodeMessage(text, type = "info") {
   elements.barcodeMessage.style.color = type === "error" ? "#bf2d2d" : "#5f6d8b";
 }
 
+function showToast(message, title, type = "success") {
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.setAttribute("role", "status");
+
+  const iconSvg = type === "error"
+    ? `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
+    : type === "info"
+      ? `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`
+      : `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+
+  const displayTitle = title || (type === "error" ? "Error" : type === "info" ? "Notice" : "Success");
+
+  toast.innerHTML = `
+    ${iconSvg}
+    <div class="toast-body">
+      <p class="toast-title">${displayTitle}</p>
+      <p class="toast-message">${message}</p>
+    </div>
+    <button class="toast-close" aria-label="Dismiss" type="button">&times;</button>
+  `;
+
+  container.appendChild(toast);
+
+  const closeButton = toast.querySelector(".toast-close");
+  const dismiss = () => {
+    if (toast.classList.contains("removing")) return;
+    toast.classList.add("removing");
+    toast.classList.remove("visible");
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 350);
+  };
+
+  closeButton.addEventListener("click", dismiss);
+
+  const autoDismiss = setTimeout(dismiss, 4000);
+
+  toast.addEventListener("mouseenter", () => clearTimeout(autoDismiss));
+  toast.addEventListener("mouseleave", () => {
+    const resumeDismiss = setTimeout(dismiss, 2000);
+    toast._resumeDismiss = resumeDismiss;
+  });
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => toast.classList.add("visible"));
+  });
+}
+
 function getProductByCode(code) {
-  return products.find((product) => product.code === code.trim());
+  return (window.pageConfig.products || []).find((product) => product.code === code.trim());
 }
 
 function handleBarcodeEntry() {
@@ -297,7 +462,16 @@ function handleBarcodeEntry() {
     return;
   }
 
+  if (isProductExpired(product.expiry_date)) {
+    showBarcodeMessage(`${product.name} is expired and cannot be sold.`, "error");
+    return;
+  }
+
   addToCart(product);
+  if (pendingDuplicateProduct === product) {
+    // Confirmation dialog is open; wait for the user's decision before clearing.
+    return;
+  }
   showBarcodeMessage(`${product.name} added to cart.`, "info");
   elements.barcodeInput.value = "";
 }
@@ -382,7 +556,7 @@ async function checkoutOrder() {
 
   const result = await response.json();
   if (!result.success) {
-    showBarcodeMessage(result.message || 'Checkout failed.', 'error');
+    showToast(result.message || 'Checkout failed. Please try again.', "Checkout failed", "error");
     return;
   }
 
@@ -394,7 +568,11 @@ async function checkoutOrder() {
   if (elements.creditCustomerPhone) elements.creditCustomerPhone.value = '';
   if (elements.creditEnabled) elements.creditEnabled.checked = false;
   if (elements.creditFields) elements.creditFields.style.display = 'none';
-  showBarcodeMessage(`Order ${result.orderId} stored successfully. Receipt saved to database.`, 'info');
+  showToast(`Order #${result.orderId} completed successfully.`, "Sale completed");
+
+  // Stock changed on the server the moment the sale was saved; pull the new
+  // quantities immediately instead of waiting for the 30-second poll.
+  await refreshProductData();
 }
 
 async function refreshProductData() {
@@ -442,14 +620,89 @@ function initSalesPage() {
   elements.cameraButton.addEventListener("click", startCameraScan);
   elements.stopCameraButton.addEventListener("click", stopCameraScan);
 
+  if (elements.duplicateModal) {
+    const closeDuplicateModal = () => {
+      elements.duplicateModal.classList.add("hidden");
+      pendingDuplicateProduct = null;
+    };
+
+    elements.duplicateConfirm.addEventListener("click", () => {
+      const product = pendingDuplicateProduct;
+      closeDuplicateModal();
+      if (product) {
+        commitAddToCart(product);
+        showBarcodeMessage(`${product.name} added to cart.`, "info");
+      }
+      if (elements.barcodeInput) elements.barcodeInput.value = "";
+    });
+
+    elements.duplicateCancel.addEventListener("click", () => {
+      const product = pendingDuplicateProduct;
+      closeDuplicateModal();
+      if (product) {
+        showBarcodeMessage(`${product.name} was not added again — it is already in this order.`, "info");
+      }
+      if (elements.barcodeInput) elements.barcodeInput.value = "";
+    });
+
+    // Clicking the dark backdrop behaves like choosing "No, cancel".
+    elements.duplicateModal.addEventListener("click", (event) => {
+      if (event.target === elements.duplicateModal) {
+        elements.duplicateCancel.click();
+      }
+    });
+  }
+
   // Refresh product data every 30 seconds for real-time inventory updates
   setInterval(refreshProductData, 30000);
+
+  // Also refresh immediately when the tab regains focus, so stock stays
+  // current even when another tab or register completes a sale.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      refreshProductData();
+    }
+  });
 }
 
 function initializeApp() {
+  initPageToasts();
   if (document.body.dataset.page === 'sales') {
     initSalesPage();
   }
+}
+
+function initPageToasts() {
+  if (document._pageToastsInitialized) return;
+  document._pageToastsInitialized = true;
+
+  document.querySelectorAll('[data-toast-message]').forEach((el) => {
+    const message = el.textContent.trim();
+    const type = (el.dataset.toastType || 'success').toLowerCase();
+    if (message) {
+      showToast(message, type === 'error' ? 'Error' : 'Success', type);
+      el.style.display = 'none';
+    }
+  });
+
+  document.querySelectorAll('.login-hint').forEach((el) => {
+    if (el.closest('form')) return;
+    if (el.hasAttribute('data-toast-message')) return;
+    const text = el.textContent.trim();
+    if (text) {
+      showToast(text, 'Success');
+      el.style.display = 'none';
+    }
+  });
+
+  document.querySelectorAll('.error-text').forEach((el) => {
+    if (el.hasAttribute('data-toast-message')) return;
+    const text = el.textContent.trim();
+    if (text) {
+      showToast(text, 'Error', 'error');
+      el.style.display = 'none';
+    }
+  });
 }
 
 document.addEventListener("DOMContentLoaded", initializeApp);

@@ -88,7 +88,7 @@ if ($user['role'] !== 'admin') {
 // Get sales data for the period
 if ($period === 'all') {
     $query = 'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
-                     o.username, o.total, o.created_at, o.status,
+                     o.username, o.total, o.created_at, o.status, o.credit, o.credit_status,
                      r.return_status, r.receipt_content,
                      p.cost_price
               FROM order_items oi
@@ -97,7 +97,7 @@ if ($period === 'all') {
               LEFT JOIN products p ON p.id = oi.product_id';
 } else {
     $query = 'SELECT oi.id, oi.order_id, oi.product_id, oi.name, oi.price, oi.quantity, oi.subtotal,
-                     o.username, o.total, o.created_at, o.status,
+                     o.username, o.total, o.created_at, o.status, o.credit, o.credit_status,
                      r.return_status, r.receipt_content,
                      p.cost_price
               FROM order_items oi
@@ -147,29 +147,60 @@ foreach ($salesData as $item) {
 }
 
 // Calculate totals
-$totalSales = count($groupedSales);
-$totalRevenue = 0;
-$totalItems = 0;
+$totalSales = 0; // active (non-fully-returned) orders only
+$totalRevenue = 0; // gross revenue: only products payment has been made for
+$netRevenue = 0; // paid revenue after returned products are subtracted
+$totalItems = 0; // effective items sold (ordered minus returned)
 $returnedSales = 0;
 $returnedRevenue = 0;
-$returnedItems = 0;
 $totalCost = 0;
+$creditCostLoss = 0; // cost of unpaid credit items (actual loss while unpaid)
+$pendingCreditRevenue = 0; // revenue not yet recognized from unpaid credit items
 
-foreach ($groupedSales as $order) {
-    $totalRevenue += $order['total'];
-    $totalItems += count($order['items']);
-    if ($order['return_status'] === 'Returned') {
-        $returnedSales++;
-        $returnedRevenue += $order['total'];
-        $returnedItems += count($order['items']);
-    }
+$returnsMap = get_returns_map($db);
+
+foreach ($groupedSales as $orderId => $order) {
+    $isCredit = (int) ($order['credit'] ?? 0);
+    $isPaid = !$isCredit || ($order['credit_status'] ?? 'Paid') === 'Paid';
+    $orderReturns = $returnsMap[$orderId] ?? [];
+    $orderQty = 0;
+    $orderReturnedQty = 0;
+
     foreach ($order['items'] as $item) {
-        $totalCost += ($item['cost_price'] ?? 0) * $item['quantity'];
+        $qty = (int) $item['quantity'];
+        $returnedQty = (int) ($orderReturns[$item['product_id']] ?? 0);
+        $effectiveQty = max(0, $qty - $returnedQty);
+        $orderQty += $qty;
+        $orderReturnedQty += $returnedQty;
+
+        $unitPrice = (float) $item['price'];
+        $unitCost = (float) ($item['cost_price'] ?? 0);
+
+        $returnedRevenue += $returnedQty * $unitPrice;
+        $totalItems += $effectiveQty;
+
+        if ($isPaid) {
+            // Revenue and cost are only counted once payment has been received.
+            $totalRevenue += $qty * $unitPrice;
+            $netRevenue += $effectiveQty * $unitPrice;
+            $totalCost += $effectiveQty * $unitCost;
+        } else {
+            // Conservative revenue recognition: credit sales count as a LOSS
+            // equal to the cost price until the customer pays. The revenue is
+            // not recognized until payment is received.
+            $creditCostLoss += $effectiveQty * $unitCost;
+            $pendingCreditRevenue += $effectiveQty * $unitPrice;
+        }
+    }
+
+    if ($orderQty > 0 && $orderReturnedQty >= $orderQty) {
+        $returnedSales++;
+    } else {
+        $totalSales++;
     }
 }
 
-$netRevenue = $totalRevenue - $returnedRevenue;
-$profitLoss = $user['role'] === 'admin' ? $netRevenue - $totalCost : 0;
+$profitLoss = $user['role'] === 'admin' ? $netRevenue - $totalCost - $creditCostLoss : 0;
 
 // Get inventory status
 $inventory = $db->query('SELECT * FROM products ORDER BY name')->fetchAll(PDO::FETCH_ASSOC);
@@ -211,6 +242,12 @@ foreach ($creditSales as $cs) {
 $stockIn = array_sum(array_map(fn($m) => $m['movement_type'] === 'in' ? $m['quantity'] : 0, $stockMovements));
 $stockOut = array_sum(array_map(fn($m) => $m['movement_type'] === 'out' ? $m['quantity'] : 0, $stockMovements));
 $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * ($p['selling_price'] ?? $p['price']), $inventory));
+
+// Expired product loss
+$expiredSummary = get_expired_stock_summary();
+$expiredStockLoss = $expiredSummary['total_loss'];
+// Subtract expired stock loss from profit
+$profitLoss = $user['role'] === 'admin' ? $profitLoss - $expiredStockLoss : 0;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -224,6 +261,13 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * ($p['sel
   <title><?php echo htmlspecialchars($posName); ?> - Balance Sheet - <?php echo $periods[$period]; ?></title>
   <link rel="icon" type="image/svg+xml" href="<?php echo htmlspecialchars(get_trademark_src()); ?>" />
   <link rel="stylesheet" href="styles.css" />
+  <style id="theme-overrides">
+    :root {
+      --theme-primary: <?php echo htmlspecialchars(get_theme_primary_color()); ?>;
+      --theme-secondary: <?php echo htmlspecialchars(get_theme_secondary_color()); ?>;
+      --theme-bg: <?php echo htmlspecialchars(get_theme_background_color()); ?>;
+    }
+  </style>
   <style>
     .balance-sheet-container {
       max-width: 1200px;
@@ -500,18 +544,43 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * ($p['sel
         <div class="stat-value negative"><?php echo $returnedSales; ?> (GH₵<?php echo number_format($returnedRevenue, 2); ?>)</div>
       </div>
       <div class="stat-item">
-        <div class="stat-label">Pending Credit</div>
-        <div class="stat-value pending"><?php echo $pendingCredit; ?></div>
+        <div class="stat-label">Credit Sales (Unpaid)</div>
+        <div class="stat-value pending"><?php echo $pendingCredit; ?> orders</div>
       </div>
+      <div class="stat-item">
+        <div class="stat-label">📦 Credit Cost Loss</div>
+        <div class="stat-value negative">
+          -GH₵<?php echo number_format($creditCostLoss, 2); ?>
+          <span style="font-size:0.7rem;display:block;color:#64748b;">Cost of goods given on credit</span>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">💰 Pending Revenue</div>
+        <div class="stat-value" style="color:#64748b;">
+          GH₵<?php echo number_format($pendingCreditRevenue, 2); ?>
+          <span style="font-size:0.7rem;display:block;color:#64748b;">Revenue recognized upon payment</span>
+        </div>
+      </div>
+      <?php if ($user['role'] === 'admin'): ?>
       <div class="stat-item">
         <div class="stat-label">Inventory Value</div>
         <div class="stat-value">GH₵<?php echo number_format($currentInventoryValue, 2); ?></div>
       </div>
-      <?php if ($user['role'] === 'admin'): ?>
         <div class="stat-item">
           <div class="stat-label">Profit / Loss</div>
           <div class="stat-value <?php echo $profitLoss >= 0 ? 'positive' : 'negative'; ?>">
             GH₵<?php echo number_format($profitLoss, 2); ?>
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">⚠ Expired Stock Loss</div>
+          <div class="stat-value negative">
+            GH₵<?php echo number_format($expiredStockLoss, 2); ?>
+            <?php if ($expiredSummary['count'] > 0): ?>
+              <span style="font-size:0.7rem;display:block;color:#64748b;">
+                <?php echo $expiredSummary['total_items']; ?> unit(s) across <?php echo $expiredSummary['count']; ?> product(s)
+              </span>
+            <?php endif; ?>
           </div>
         </div>
       <?php endif; ?>
@@ -577,13 +646,19 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * ($p['sel
               <?php if ($user['role'] === 'admin'): ?>
                 <th>Cost Price</th>
                 <th>Margin</th>
+              <?php endif; ?>                <th>In Stock</th>
+                <th>Expiry</th>
+              <?php if ($user['role'] === 'admin'): ?>
+                <th>Value</th>
               <?php endif; ?>
-              <th>In Stock</th>
-              <th>Value</th>
             </tr>
           </thead>
           <tbody>
             <?php foreach ($inventory as $product): ?>
+              <?php
+                $pExpired = is_product_expired($product['expiry_date'] ?? null);
+                $pExpiringSoon = !$pExpired && is_product_expiring_soon($product['expiry_date'] ?? null);
+              ?>
               <tr>
                 <td style="font-weight:600;"><?php echo htmlspecialchars($product['name']); ?></td>
                 <td><?php echo htmlspecialchars($product['code']); ?></td>
@@ -607,7 +682,20 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * ($p['sel
                     <span style="color:#059669;font-weight:700;"><?php echo htmlspecialchars($product['quantity']); ?></span>
                   <?php endif; ?>
                 </td>
-                <td>GH₵<?php echo htmlspecialchars(number_format($product['quantity'] * $product['selling_price'], 2)); ?></td>
+                <td>
+                  <?php if (empty($product['expiry_date'])): ?>
+                    <span style="color:#94a3b8;">N/A</span>
+                  <?php elseif ($pExpired): ?>
+                    <span style="color:#dc2626;font-weight:700;">⚠ Expired</span>
+                  <?php elseif ($pExpiringSoon): ?>
+                    <span style="color:#f59e0b;font-weight:700;">⏰ <?php echo htmlspecialchars(date('M d, Y', strtotime($product['expiry_date']))); ?></span>
+                  <?php else: ?>
+                    <span style="color:#059669;"><?php echo htmlspecialchars(date('M d, Y', strtotime($product['expiry_date']))); ?></span>
+                  <?php endif; ?>
+                </td>
+                <?php if ($user['role'] === 'admin'): ?>
+                  <td>GH₵<?php echo htmlspecialchars(number_format($product['quantity'] * $product['selling_price'], 2)); ?></td>
+                <?php endif; ?>
               </tr>
             <?php endforeach; ?>
           </tbody>
@@ -652,6 +740,87 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * ($p['sel
       <?php endif; ?>
     </div>
 
+    <?php
+    $accountingSummary = [];
+    try {
+        $accountingSummary = get_credit_period_summary(
+            $period === 'all' ? 'all' : 'custom',
+            $startDateStr ?: null,
+            $endDateStr ?: null
+        );
+    } catch (\Throwable $e) {
+        $accountingSummary = [];
+    }
+    ?>
+
+    <div class="section-card">
+      <h3>Revenue Recognition Accounting</h3>
+      <?php if (empty($accountingSummary['orders'])): ?>
+        <p class="empty-message">No accounting data available.</p>
+      <?php else: ?>
+        <table class="ledger-table">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>State</th>
+              <th>Sale Amount</th>
+              <th>Paid</th>
+              <th>Loss</th>
+              <th>Revenue</th>
+              <th>Outstanding</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($accountingSummary['orders'] as $o): ?>
+              <tr>
+                <td>#<?php echo str_pad((string)$o['order_id'], 8, '0', STR_PAD_LEFT); ?></td>
+                <td>
+                  <span class="badge <?php echo strtolower($o['state']); ?>">
+                    <?php echo htmlspecialchars($o['state']); ?>
+                  </span>
+                </td>
+                <td>GH₵<?php echo number_format($o['sale_amount'], 2); ?></td>
+                <td>GH₵<?php echo number_format($o['paid'], 2); ?></td>
+                <td class="negative">GH₵<?php echo number_format($o['loss'], 2); ?></td>
+                <td class="positive">GH₵<?php echo number_format($o['revenue'], 2); ?></td>
+                <td>GH₵<?php echo number_format($o['outstanding'], 2); ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+        <div class="stats-grid" style="margin-top:12px;">
+          <div class="stat-item">
+            <div class="stat-label">Orders in Loss</div>
+            <div class="stat-value negative"><?php echo $accountingSummary['orders_in_loss']; ?></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Orders in Revenue</div>
+            <div class="stat-value positive"><?php echo $accountingSummary['orders_in_revenue']; ?></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Total Loss Exposure</div>
+            <div class="stat-value negative">GH₵<?php echo number_format($accountingSummary['total_loss'], 2); ?></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Total Revenue Recognized</div>
+            <div class="stat-value positive">GH₵<?php echo number_format($accountingSummary['total_revenue'], 2); ?></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Pending Credit</div>
+            <div class="stat-value pending">GH₵<?php echo number_format($accountingSummary['total_pending'], 2); ?></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Penalties</div>
+            <div class="stat-value">GH₵<?php echo number_format($accountingSummary['total_penalties'], 2); ?></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Write-Offs</div>
+            <div class="stat-value negative">GH₵<?php echo number_format($accountingSummary['total_write_offs'], 2); ?></div>
+          </div>
+        </div>
+      <?php endif; ?>
+    </div>
+
     <div class="actions">
       <a href="sales.php" class="secondary">Sales Register</a>
       <a href="credit_sales.php" class="secondary">Credit Sales</a>
@@ -659,6 +828,13 @@ $currentInventoryValue = array_sum(array_map(fn($p) => $p['quantity'] * ($p['sel
     </div>
     </main>
   </div>
+  <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+  <script src="script.js"></script>
   <script src="nav.js"></script>
+  <footer class="app-footer">
+    Designed by Ten12 Tech&copy;<br />
+    &copy;2026<br />
+    Contact: +233 55 850 4111
+  </footer>
 </body>
 </html>

@@ -7,6 +7,8 @@ if (!headers_sent()) {
     header("Pragma: no-cache");
 }
 
+require_once __DIR__ . '/accounting.php';
+
 const USER_CREDENTIALS = [
     [
         'username' => 'sales',
@@ -35,6 +37,7 @@ const ACTIVATION_CODE = 'LreXO_-S,L#Lp75xK2YF';
 const ACTIVATION_SCHEME = 'v2';
 // 20160 minutes = exactly 14 days.
 const DEFAULT_ACTIVATION_PERIOD_MINUTES = 14 * 24 * 60;
+const BACKUP_SYSTEM_VERSION = '1';
 
 function is_windows_os(): bool {
     // POS_FORCE_WINDOWS=1 lets the Windows per-user data layout (and its automatic
@@ -274,6 +277,13 @@ function initialize_database(PDO $db): void {
         // Column might already exist, ignore error
     }
 
+    // Add expiry_date column if it doesn't exist (for existing databases)
+    try {
+        $db->exec('ALTER TABLE products ADD COLUMN expiry_date TEXT');
+    } catch (Exception $e) {
+        // Column might already exist, ignore error
+    }
+
     $db->exec(
         'CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY,
@@ -377,6 +387,41 @@ function initialize_database(PDO $db): void {
     }
 
     $db->exec(
+        'CREATE TABLE IF NOT EXISTS failed_login_attempts (
+            id INTEGER PRIMARY KEY,
+            username TEXT NOT NULL,
+            role TEXT NOT NULL,
+            ip TEXT,
+            created_at TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT \'Invalid credentials\'
+        )'
+    );
+
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS activity_log (
+            id INTEGER PRIMARY KEY,
+            username TEXT NOT NULL,
+            role TEXT NOT NULL,
+            action TEXT NOT NULL,
+            description TEXT NOT NULL,
+            ip TEXT,
+            created_at TEXT NOT NULL
+        )'
+    );
+
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS activity_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            role TEXT NOT NULL,
+            ip TEXT,
+            session_started_at TEXT NOT NULL,
+            session_ended_at TEXT,
+            activities TEXT NOT NULL DEFAULT \'[]\'
+        )'
+    );
+
+    $db->exec(
         'CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -391,6 +436,10 @@ function initialize_database(PDO $db): void {
     $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('trial_period_minutes', '10080')");
     $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('reset_interval_minutes', '10080')");
     $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('activation_period_minutes', '" . DEFAULT_ACTIVATION_PERIOD_MINUTES . "')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme_primary_color', '#001a4a')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme_secondary_color', '#003080')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme_background_color', '#f1f5f9')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme_login_brand_image', 'images/pos-hero.svg')");
 
     $db->exec(
         'CREATE TABLE IF NOT EXISTS activation_log (
@@ -415,6 +464,79 @@ function initialize_database(PDO $db): void {
             notes TEXT,
             created_at TEXT NOT NULL,
             FOREIGN KEY(product_id) REFERENCES products(id)
+        )'
+    );
+
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS credit_journal_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id INTEGER NOT NULL,
+            entry_type TEXT NOT NULL,
+            entry_kind TEXT NOT NULL,
+            account TEXT NOT NULL,
+            amount REAL NOT NULL,
+            description TEXT,
+            reference TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(transaction_id) REFERENCES orders(id)
+        )'
+    );
+
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS credit_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            cumulative_payment REAL NOT NULL,
+            reference TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(transaction_id) REFERENCES orders(id)
+        )'
+    );
+
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS credit_penalties (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id INTEGER NOT NULL,
+            days_overdue INTEGER NOT NULL,
+            penalty_amount REAL NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(transaction_id) REFERENCES orders(id)
+        )'
+    );
+
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS credit_write_offs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id INTEGER NOT NULL,
+            requested_amount REAL NOT NULL,
+            actual_write_off REAL NOT NULL,
+            remaining_obligation REAL NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(transaction_id) REFERENCES orders(id)
+        )'
+    );
+
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS credit_reversals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(transaction_id) REFERENCES orders(id)
+        )'
+    );
+
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS credit_transaction_states (
+            transaction_id INTEGER PRIMARY KEY,
+            state INTEGER NOT NULL,
+            sale_amount REAL NOT NULL,
+            loss_amount REAL NOT NULL,
+            revenue_amount REAL NOT NULL,
+            cumulative_payment REAL NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(transaction_id) REFERENCES orders(id)
         )'
     );
 
@@ -458,6 +580,23 @@ function initialize_database(PDO $db): void {
 
         log_activation_attempt('(scheme upgrade)', 'scheme_v2_override');
     }
+
+    // ---- Backup system initialization ----
+    // Detect previous versions that did not ship with the automatic backup
+    // subsystem. If the backup marker is missing (or stale), seed the backup
+    // database from the current customer database so data recovery is available
+    // immediately after an update.
+    $backupStmt = $db->prepare('SELECT value FROM settings WHERE key = ?');
+    $backupStmt->execute(['backup_system_version']);
+    $backupVersion = $backupStmt->fetchColumn();
+
+    if ($backupVersion !== BACKUP_SYSTEM_VERSION) {
+        backup_database();
+        $markBackup = $db->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+        $markBackup->execute(['backup_system_version', BACKUP_SYSTEM_VERSION]);
+    }
+
+    migrate_activity_log_to_sessions();
 }
 
 function get_setting(string $key, string $default = ''): string {
@@ -501,7 +640,7 @@ function get_default_products(): array {
 }
 
 function load_products(): array {
-    $stmt = get_database()->query('SELECT id, code, name, category, selling_price, cost_price, image, quantity, bulk_quantity_threshold, bulk_discount_percentage FROM products ORDER BY id');
+    $stmt = get_database()->query('SELECT id, code, name, category, selling_price, cost_price, image, quantity, bulk_quantity_threshold, bulk_discount_percentage, expiry_date FROM products ORDER BY id');
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -564,7 +703,7 @@ function save_products(array $products): bool {
 
     $db->exec('DELETE FROM products');
 
-        $insert = $db->prepare('INSERT INTO products (id, code, name, category, price, selling_price, cost_price, image, quantity, bulk_quantity_threshold, bulk_discount_percentage) VALUES (:id, :code, :name, :category, :price, :selling_price, :cost_price, :image, :quantity, :bulk_quantity_threshold, :bulk_discount_percentage)');
+    $insert = $db->prepare('INSERT INTO products (id, code, name, category, price, selling_price, cost_price, image, quantity, bulk_quantity_threshold, bulk_discount_percentage, expiry_date) VALUES (:id, :code, :name, :category, :price, :selling_price, :cost_price, :image, :quantity, :bulk_quantity_threshold, :bulk_discount_percentage, :expiry_date)');
     $nextId = 1;
 
     foreach ($products as $product) {
@@ -584,6 +723,7 @@ function save_products(array $products): bool {
             ':quantity' => $quantity,
             ':bulk_quantity_threshold' => intval($product['bulk_quantity_threshold'] ?? 0),
             ':bulk_discount_percentage' => floatval($product['bulk_discount_percentage'] ?? 0),
+            ':expiry_date' => !empty($product['expiry_date']) ? $product['expiry_date'] : null,
         ]);
 
         $oldQty = $oldQuantities[$id] ?? null;
@@ -733,6 +873,97 @@ function get_image_options(): array {
     return $options;
 }
 
+function is_product_expired(?string $expiryDate): bool {
+    if (empty($expiryDate)) {
+        return false;
+    }
+    try {
+        $expiry = new DateTime($expiryDate);
+        $today = new DateTime();
+        $today->setTime(0, 0, 0);
+        return $expiry < $today;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+function is_product_expiring_soon(?string $expiryDate, int $daysWarning = 7): bool {
+    if (empty($expiryDate)) {
+        return false;
+    }
+    try {
+        $expiry = new DateTime($expiryDate);
+        $today = new DateTime();
+        $today->setTime(0, 0, 0);
+        $warning = new DateTime();
+        $warning->modify("+{$daysWarning} days");
+        return $expiry >= $today && $expiry <= $warning;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+function get_expired_products(): array {
+    $products = load_products();
+    return array_filter($products, fn($p) => is_product_expired($p['expiry_date'] ?? null));
+}
+
+function get_expired_stock_loss(): float {
+    $expired = get_expired_products();
+    $totalLoss = 0.0;
+    foreach ($expired as $product) {
+        $totalLoss += (float) $product['cost_price'] * (int) $product['quantity'];
+    }
+    return round($totalLoss, 2);
+}
+
+function get_expired_stock_summary(): array {
+    $products = load_products();
+    $totalItems = 0;
+    $totalLoss = 0.0;
+    $expiredItems = [];
+    foreach ($products as $product) {
+        if (is_product_expired($product['expiry_date'] ?? null) && (int) $product['quantity'] > 0) {
+            $loss = (float) $product['cost_price'] * (int) $product['quantity'];
+            $totalLoss += $loss;
+            $totalItems += (int) $product['quantity'];
+            $expiredItems[] = [
+                'product' => $product,
+                'loss' => $loss,
+            ];
+        }
+    }
+    return [
+        'count' => count($expiredItems),
+        'total_items' => $totalItems,
+        'total_loss' => round($totalLoss, 2),
+        'items' => $expiredItems,
+    ];
+}
+
+function get_expiring_soon_summary(int $daysWarning = 7): array {
+    $products = load_products();
+    $totalItems = 0;
+    $expiringItems = [];
+    foreach ($products as $product) {
+        if (is_product_expiring_soon($product['expiry_date'] ?? null, $daysWarning) && (int) $product['quantity'] > 0) {
+            $daysLeft = (int) (new DateTime($product['expiry_date']))->diff(new DateTime())->days;
+            $totalItems += (int) $product['quantity'];
+            $expiringItems[] = [
+                'product' => $product,
+                'days_left' => $daysLeft,
+            ];
+        }
+    }
+    // Sort by days left ascending (most urgent first)
+    usort($expiringItems, fn($a, $b) => $a['days_left'] <=> $b['days_left']);
+    return [
+        'count' => count($expiringItems),
+        'total_items' => $totalItems,
+        'items' => $expiringItems,
+    ];
+}
+
 function save_order(array $cart, string $username, array $credit = []): ?int {
     $products = load_products();
     $productMap = [];
@@ -758,6 +989,11 @@ function save_order(array $cart, string $username, array $credit = []): ?int {
         // Check stock availability
         if ($product['quantity'] < $quantity) {
             return null; // Insufficient stock
+        }
+
+        // Block sale of expired products
+        if (is_product_expired($product['expiry_date'] ?? null)) {
+            return null; // Product is expired
         }
 
         $unitPrice = $product['selling_price'];
@@ -871,35 +1107,300 @@ function log_login_event(string $username, string $role): bool {
     $db = get_database();
     $stmt = $db->prepare('INSERT INTO login_events (username, role, ip, created_at) VALUES (:username, :role, :ip, :created_at)');
     $ip = $_SERVER['REMOTE_ADDR'] ?? null;
-    return $stmt->execute([
+    $result = $stmt->execute([
         ':username' => $username,
         ':role' => $role,
         ':ip' => $ip,
         ':created_at' => date('c'),
     ]);
+
+    if ($result) {
+        start_activity_session($username, $role, $ip);
+    }
+
+    return $result;
 }
 
 function log_logout_event(string $username): bool {
     $db = get_database();
     $stmt = $db->prepare('UPDATE login_events SET logged_out_at = :logged_out_at WHERE username = :username AND logged_out_at IS NULL');
-    return $stmt->execute([
+    $result = $stmt->execute([
         ':logged_out_at' => date('c'),
         ':username' => $username,
     ]);
+
+    if ($result) {
+        close_activity_session();
+    }
+
+    return $result;
 }
 
-function load_login_events(int $limit = 50): array {
-    $stmt = get_database()->prepare(
-        'SELECT id, username, role, ip, created_at, logged_out_at
+function log_failed_login_attempt(string $username, string $role, string $reason = 'Invalid credentials'): bool {
+    $db = get_database();
+    $stmt = $db->prepare('INSERT INTO failed_login_attempts (username, role, ip, created_at, reason) VALUES (:username, :role, :ip, :created_at, :reason)');
+    return $stmt->execute([
+        ':username' => $username,
+        ':role' => $role,
+        ':ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+        ':created_at' => date('c'),
+        ':reason' => $reason,
+    ]);
+}
+
+function start_activity_session(string $username, string $role, ?string $ip): void {
+    $db = get_database();
+    $stmt = $db->prepare('INSERT INTO activity_sessions (username, role, ip, session_started_at, activities) VALUES (:username, :role, :ip, :session_started_at, :activities)');
+    $stmt->execute([
+        ':username' => $username,
+        ':role' => $role,
+        ':ip' => $ip,
+        ':session_started_at' => date('c'),
+        ':activities' => json_encode([]),
+    ]);
+    $_SESSION['activity_session_id'] = (int) $db->lastInsertId();
+}
+
+function close_activity_session(): bool {
+    $sessionId = $_SESSION['activity_session_id'] ?? null;
+    if (!$sessionId) {
+        return false;
+    }
+    $db = get_database();
+    $stmt = $db->prepare('UPDATE activity_sessions SET session_ended_at = :session_ended_at WHERE id = :id');
+    $result = $stmt->execute([
+        ':session_ended_at' => date('c'),
+        ':id' => $sessionId,
+    ]);
+    unset($_SESSION['activity_session_id']);
+    return $result;
+}
+
+function append_activity(string $action, string $description): bool {
+    $db = get_database();
+    $sessionId = $_SESSION['activity_session_id'] ?? null;
+
+    if (!$sessionId) {
+        return false;
+    }
+
+    $stmt = $db->prepare('SELECT activities FROM activity_sessions WHERE id = :id');
+    $stmt->execute([':id' => $sessionId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $activities = json_decode($row['activities'] ?? '[]', true) ?: [];
+    $activities[] = [
+        'action' => $action,
+        'description' => $description,
+        'timestamp' => date('c'),
+    ];
+
+    $update = $db->prepare('UPDATE activity_sessions SET activities = :activities WHERE id = :id');
+    return $update->execute([
+        ':activities' => json_encode($activities),
+        ':id' => $sessionId,
+    ]);
+}
+
+function log_activity(string $username, string $role, string $action, string $description): bool {
+    return append_activity($action, $description);
+}
+
+function load_activity_log(int $limit = 100): array {
+    $db = get_database();
+    $limit = max(1, $limit);
+
+    $sessionsStmt = $db->prepare(
+        'SELECT id, username, role, ip, session_started_at, session_ended_at, activities
+         FROM activity_sessions
+         ORDER BY session_started_at DESC'
+    );
+    $sessionsStmt->execute();
+    $sessions = $sessionsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $sessionKeys = [];
+    foreach ($sessions as $session) {
+        $sessionKeys[] = $session['username'] . '|' . $session['session_started_at'];
+    }
+
+    $loginEvents = [];
+    if (!empty($sessionKeys)) {
+        $placeholders = implode(',', array_fill(0, count($sessionKeys), '?'));
+        $params = array_merge($sessionKeys);
+        $params[] = $limit;
+
+        $stmt = $db->prepare(
+            "SELECT id, username, role, ip, created_at AS session_started_at, logged_out_at AS session_ended_at
+             FROM login_events
+             WHERE (username || '|' || created_at) NOT IN ($placeholders)
+             ORDER BY created_at DESC
+             LIMIT ?"
+        );
+        $stmt->execute($params);
+        $loginEvents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $stmt = $db->prepare(
+            'SELECT id, username, role, ip, created_at AS session_started_at, logged_out_at AS session_ended_at
+             FROM login_events
+             ORDER BY created_at DESC
+             LIMIT :limit'
+        );
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $loginEvents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    foreach ($loginEvents as &$event) {
+        $event['activities'] = [];
+    }
+
+    $all = array_merge($sessions, $loginEvents);
+
+    usort($all, function ($a, $b) {
+        return strcmp($b['session_started_at'], $a['session_started_at']);
+    });
+
+    $all = array_slice($all, 0, $limit);
+
+    foreach ($all as &$session) {
+        if (!is_array($session['activities'])) {
+            $session['activities'] = json_decode($session['activities'] ?? '[]', true) ?: [];
+        }
+    }
+
+    return $all;
+}
+
+function load_all_login_activities(int $limit = 500): array {
+    $db = get_database();
+    $limit = max(1, $limit);
+
+    $successStmt = $db->prepare(
+        'SELECT id, username, role, ip, created_at, logged_out_at, \'success\' AS status
          FROM login_events
-         WHERE username != :hidden_username
          ORDER BY created_at DESC
          LIMIT :limit'
     );
-    $stmt->bindValue(':hidden_username', 'ddadzie124', PDO::PARAM_STR);
-    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-    $stmt->execute();
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $successStmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $successStmt->execute();
+    $success = $successStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $failedStmt = $db->prepare(
+        'SELECT id, username, role, ip, created_at, reason, \'failed\' AS status
+         FROM failed_login_attempts
+         ORDER BY created_at DESC
+         LIMIT :limit'
+    );
+    $failedStmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $failedStmt->execute();
+    $failed = $failedStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $all = array_merge($success, $failed);
+
+    usort($all, function ($a, $b) {
+        return strcmp($b['created_at'], $a['created_at']);
+    });
+
+    return array_slice($all, 0, $limit);
+}
+
+function migrate_activity_log_to_sessions(): void {
+    $db = get_database();
+
+    $stmt = $db->query('SELECT COUNT(*) FROM activity_sessions');
+    if ((int) $stmt->fetchColumn() > 0) {
+        return;
+    }
+
+    $loginEvents = $db->query('SELECT id, username, role, ip, created_at, logged_out_at FROM login_events ORDER BY username ASC, created_at ASC')->fetchAll(PDO::FETCH_ASSOC);
+    $activities = $db->query('SELECT action, description, created_at, ip, username FROM activity_log ORDER BY username ASC, created_at ASC')->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($activities)) {
+        return;
+    }
+
+    $sessions = [];
+    $orphaned = [];
+
+    if (!empty($loginEvents)) {
+        $userSessions = [];
+        foreach ($loginEvents as $event) {
+            $userSessions[$event['username']][] = $event;
+        }
+
+        foreach ($activities as $activity) {
+            $matched = false;
+            $userSessionsList = $userSessions[$activity['username']] ?? [];
+
+            foreach ($userSessionsList as $session) {
+                if ($activity['created_at'] >= $session['created_at']) {
+                    if ($session['logged_out_at'] === null || $activity['created_at'] <= $session['logged_out_at']) {
+                        $sessionKey = $session['username'] . '|' . $session['created_at'];
+                        if (!isset($sessions[$sessionKey])) {
+                            $sessions[$sessionKey] = [
+                                'username' => $session['username'],
+                                'role' => $session['role'],
+                                'ip' => $session['ip'],
+                                'session_started_at' => $session['created_at'],
+                                'session_ended_at' => $session['logged_out_at'],
+                                'activities' => [],
+                            ];
+                        }
+                        $sessions[$sessionKey]['activities'][] = [
+                            'action' => $activity['action'],
+                            'description' => $activity['description'],
+                            'timestamp' => $activity['created_at'],
+                        ];
+                        $matched = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!$matched) {
+                $orphaned[] = $activity;
+            }
+        }
+    } else {
+        $orphaned = $activities;
+    }
+
+    if (!empty($orphaned)) {
+        $byUserDay = [];
+        foreach ($orphaned as $activity) {
+            $day = date('Y-m-d', strtotime($activity['created_at']));
+            $key = $activity['username'] . '|' . $day;
+            if (!isset($byUserDay[$key])) {
+                $byUserDay[$key] = [
+                    'username' => $activity['username'],
+                    'role' => '',
+                    'ip' => $activity['ip'] ?? '',
+                    'session_started_at' => $activity['created_at'],
+                    'session_ended_at' => $activity['created_at'],
+                    'activities' => [],
+                ];
+            }
+            $byUserDay[$key]['activities'][] = [
+                'action' => $activity['action'],
+                'description' => $activity['description'],
+                'timestamp' => $activity['created_at'],
+            ];
+            $byUserDay[$key]['session_ended_at'] = $activity['created_at'];
+        }
+        $sessions = array_merge($sessions, $byUserDay);
+    }
+
+    foreach ($sessions as $session) {
+        $stmt = $db->prepare('INSERT INTO activity_sessions (username, role, ip, session_started_at, session_ended_at, activities) VALUES (:username, :role, :ip, :session_started_at, :session_ended_at, :activities)');
+        $stmt->execute([
+            ':username' => $session['username'],
+            ':role' => $session['role'] ?: 'sales',
+            ':ip' => $session['ip'],
+            ':session_started_at' => $session['session_started_at'],
+            ':session_ended_at' => $session['session_ended_at'],
+            ':activities' => json_encode($session['activities']),
+        ]);
+    }
 }
 
 function find_user(string $username) {
@@ -938,7 +1439,7 @@ function create_user(string $username, string $password, string $role): bool {
 }
 
 function get_all_users(): array {
-$stmt = get_database()->query('SELECT id, username, role, created_at FROM users WHERE username != \'ddadzie124\' ORDER BY created_at DESC');
+    $stmt = get_database()->query('SELECT id, username, role, created_at FROM users WHERE username != \'ddadzie124\' ORDER BY created_at DESC');
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -1032,6 +1533,11 @@ function require_admin() {
         header('Location: sales.php');
         exit;
     }
+}
+
+function is_super_admin(): bool {
+    $user = current_user();
+    return $user !== null && $user['username'] === 'ddadzie124';
 }
 
 function save_receipt(int $orderId, array $cart, string $username, array $credit = []): ?int {
@@ -1318,6 +1824,76 @@ function save_trademark_image(array $file): ?string {
     return null;
 }
 
+function get_theme_primary_color(): string {
+    return get_setting('theme_primary_color', '#001a4a');
+}
+
+function set_theme_primary_color(string $color): bool {
+    $stmt = get_database()->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    return $stmt->execute(['theme_primary_color', $color]);
+}
+
+function get_theme_secondary_color(): string {
+    return get_setting('theme_secondary_color', '#003080');
+}
+
+function set_theme_secondary_color(string $color): bool {
+    $stmt = get_database()->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    return $stmt->execute(['theme_secondary_color', $color]);
+}
+
+function get_theme_background_color(): string {
+    return get_setting('theme_background_color', '#f1f5f9');
+}
+
+function set_theme_background_color(string $color): bool {
+    $stmt = get_database()->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    return $stmt->execute(['theme_background_color', $color]);
+}
+
+function get_theme_login_brand_image(): string {
+    return get_setting('theme_login_brand_image', 'images/pos-hero.svg');
+}
+
+function set_theme_login_brand_image(string $path): bool {
+    $stmt = get_database()->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    return $stmt->execute(['theme_login_brand_image', $path]);
+}
+
+function get_theme_brand_image_src(): string {
+    $image = get_theme_login_brand_image();
+    if ($image !== '' && file_exists(__DIR__ . '/../' . $image)) {
+        return $image;
+    }
+    return 'images/pos-hero.svg';
+}
+
+function save_theme_brand_image(array $file): ?string {
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $allowed = ['png', 'jpg', 'jpeg', 'svg', 'webp'];
+    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($extension, $allowed, true)) {
+        return null;
+    }
+
+    $path = __DIR__ . '/../images';
+    if (!is_dir($path)) {
+        mkdir($path, 0755, true);
+    }
+
+    $filename = 'theme-brand.' . $extension;
+    $destination = $path . '/' . $filename;
+
+    if (move_uploaded_file($file['tmp_name'], $destination)) {
+        return 'images/' . $filename;
+    }
+
+    return null;
+}
+
 function get_all_receipts_with_status(): array {
     $stmt = get_database()->query(
         'SELECT r.id, r.order_id, r.username, r.receipt_content, r.return_status, r.created_at
@@ -1332,7 +1908,37 @@ function mark_credit_paid(int $orderId): bool {
     $stmt = $db->prepare('UPDATE orders SET credit_status = "Paid" WHERE id = :id AND credit = 1');
     $result = $stmt->execute([':id' => $orderId]);
     if ($result && $stmt->rowCount() > 0) {
-        // Back up the database after a credit payment is recorded (best-effort; never fails the update).
+        $orderStmt = $db->prepare('SELECT total FROM orders WHERE id = :id');
+        $orderStmt->execute([':id' => $orderId]);
+        $order = $orderStmt->fetch(PDO::FETCH_ASSOC);
+        if ($order) {
+            $saleAmount = (float) $order['total'];
+            $paymentStmt = $db->prepare('SELECT SUM(amount) as total_paid FROM credit_payments WHERE transaction_id = :transaction_id');
+            $paymentStmt->execute([':transaction_id' => $orderId]);
+            $paymentRow = $paymentStmt->fetch(PDO::FETCH_ASSOC);
+            $totalPaid = (float) ($paymentRow['total_paid'] ?: 0);
+            if ($totalPaid >= $saleAmount - 0.01) {
+                $service = new \App\Accounting\CreditAccountingService($db);
+                try {
+                    $crm = $service->createCreditTransaction($orderId, $saleAmount);
+                    $paymentResult = $crm->receivePayment($totalPaid, time(), 'Legacy payment reconciliation');
+                    foreach ($paymentResult->journalEntries as $entry) {
+                        $db->prepare('INSERT INTO credit_journal_entries (transaction_id, entry_type, entry_kind, account, amount, description, reference, created_at) VALUES (:transaction_id, :entry_type, :entry_kind, :account, :amount, :description, :reference, :created_at)')->execute([
+                            ':transaction_id' => $orderId,
+                            ':entry_type' => $entry['type'],
+                            ':entry_kind' => 'LEGACY_RECONCILIATION',
+                            ':account' => $entry['account'],
+                            ':amount' => $entry['amount'],
+                            ':description' => $entry['description'],
+                            ':reference' => 'legacy',
+                            ':created_at' => date('c'),
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    error_log('Legacy reconciliation failed for order #' . $orderId . ': ' . $e->getMessage());
+                }
+            }
+        }
         backup_database();
     }
     return $result;
@@ -1791,6 +2397,49 @@ function get_activation_deadline(): int {
     return get_activation_started_at() + get_activation_period_seconds();
 }
 
+function admin_activate_app(): bool {
+    $db = get_database();
+    $stmt = $db->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    $result = $stmt->execute(['app_activated', '1']);
+    if ($result) {
+        $stmt->execute(['license_type', 'permanent']);
+        $stmt->execute(['license_activated_at', date('c')]);
+        $stmt->execute(['last_activated_at', date('c')]);
+        log_activation_attempt('(admin)', 'admin_activate');
+    }
+    return $result;
+}
+
+function admin_cancel_activation(): bool {
+    $db = get_database();
+    $stmt = $db->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    $result = $stmt->execute(['app_activated', '0']);
+    if ($result) {
+        $stmt->execute(['license_type', '']);
+        $stmt->execute(['license_activated_at', '']);
+        $stmt->execute(['activation_started_at', '0']);
+        log_activation_attempt('(admin)', 'admin_cancel');
+    }
+    return $result;
+}
+
+function set_activation_period_minutes(int $minutes): bool {
+    if ($minutes <= 0) {
+        return false;
+    }
+    $db = get_database();
+    $stmt = $db->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    $result = $stmt->execute(['activation_period_minutes', (string) $minutes]);
+    if ($result) {
+        $stmt->execute(['trial_period_minutes', (string) $minutes]);
+    }
+    return $result;
+}
+
+function get_activation_period_minutes(): int {
+    return (int) get_setting('activation_period_minutes', (string) DEFAULT_ACTIVATION_PERIOD_MINUTES);
+}
+
 function get_trial_status(): array {
     // Once the activation code has ended the trial, the app is permanently
     // licensed and never expires.
@@ -1862,12 +2511,34 @@ function backup_database(): bool {
     return true;
 }
 
+function ensure_data_files(): void {
+    $dbPath = get_db_path();
+    $backupDir = dirname($dbPath) . DIRECTORY_SEPARATOR . 'backups';
+    $backupPath = $backupDir . DIRECTORY_SEPARATOR . 'pos_backup.db';
+
+    $primaryMissing = !file_exists($dbPath);
+    $backupMissing = !file_exists($backupPath);
+
+    if (!$primaryMissing && !$backupMissing) {
+        return;
+    }
+
+    if ($primaryMissing) {
+        get_database();
+    }
+
+    if ($backupMissing) {
+        backup_database();
+    }
+}
+
 function check_app_access(): void {
     $trial = get_trial_status();
 
     if ($trial['status'] === 'expired') {
         if (isset($_SESSION['user']['username'])) {
             log_logout_event($_SESSION['user']['username']);
+            close_activity_session();
         }
         backup_database();
         session_unset();
@@ -1875,4 +2546,127 @@ function check_app_access(): void {
         header('Location: login.php?trial_expired=1');
         exit;
     }
+}
+
+function get_database_for_accounting(): PDO {
+    return get_database();
+}
+
+function initialize_credit_accounting_for_order(int $orderId, float $saleAmount, ?float $penaltyRate = null, ?int $paymentDeadline = null): \App\Accounting\ConservativeRevenueRecognition {
+    $db = get_database_for_accounting();
+    $service = new \App\Accounting\CreditAccountingService($db);
+    return $service->createCreditTransaction($orderId, $saleAmount, $penaltyRate, $paymentDeadline);
+}
+
+function process_credit_payment_with_accounting(int $orderId, float $amount, string $reference = ''): \App\Accounting\PaymentResult {
+    $db = get_database_for_accounting();
+    $service = new \App\Accounting\CreditAccountingService($db);
+    return $service->processPayment($orderId, $amount, $reference);
+}
+
+function apply_credit_penalty(int $orderId, int $daysOverdue): \App\Accounting\PenaltyResult {
+    $db = get_database_for_accounting();
+    $service = new \App\Accounting\CreditAccountingService($db);
+    return $service->applyPenalty($orderId, $daysOverdue);
+}
+
+function write_off_credit_unrecoverable(int $orderId, float $amount): \App\Accounting\WriteOffResult {
+    $db = get_database_for_accounting();
+    $service = new \App\Accounting\CreditAccountingService($db);
+    return $service->writeOffUnrecoverable($orderId, $amount);
+}
+
+function reverse_credit_revenue(int $orderId, string $reason): \App\Accounting\ReversalResult {
+    $db = get_database_for_accounting();
+    $service = new \App\Accounting\CreditAccountingService($db);
+    return $service->reverseRevenueRecognition($orderId, $reason);
+}
+
+function get_credit_journal_entries(int $transactionId): array {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT * FROM credit_journal_entries WHERE transaction_id = :transaction_id ORDER BY created_at ASC, id ASC');
+    $stmt->execute([':transaction_id' => $transactionId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function get_credit_payments(int $transactionId): array {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT * FROM credit_payments WHERE transaction_id = :transaction_id ORDER BY created_at ASC, id ASC');
+    $stmt->execute([':transaction_id' => $transactionId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function get_credit_penalties(int $transactionId): array {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT * FROM credit_penalties WHERE transaction_id = :transaction_id ORDER BY created_at ASC, id ASC');
+    $stmt->execute([':transaction_id' => $transactionId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function get_credit_write_offs(int $transactionId): array {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT * FROM credit_write_offs WHERE transaction_id = :transaction_id ORDER BY created_at ASC, id ASC');
+    $stmt->execute([':transaction_id' => $transactionId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function get_credit_reversals(int $transactionId): array {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT * FROM credit_reversals WHERE transaction_id = :transaction_id ORDER BY created_at ASC, id ASC');
+    $stmt->execute([':transaction_id' => $transactionId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function save_credit_transaction_state(int $transactionId, int $state, float $saleAmount, float $lossAmount, float $revenueAmount, float $cumulativePayment): bool {
+    $db = get_database();
+    $stmt = $db->prepare('INSERT OR REPLACE INTO credit_transaction_states (transaction_id, state, sale_amount, loss_amount, revenue_amount, cumulative_payment, updated_at) VALUES (:transaction_id, :state, :sale_amount, :loss_amount, :revenue_amount, :cumulative_payment, :updated_at)');
+    return $stmt->execute([
+        ':transaction_id' => $transactionId,
+        ':state' => $state,
+        ':sale_amount' => $saleAmount,
+        ':loss_amount' => $lossAmount,
+        ':revenue_amount' => $revenueAmount,
+        ':cumulative_payment' => $cumulativePayment,
+        ':updated_at' => date('c'),
+    ]);
+}
+
+function get_credit_transaction_state(int $transactionId): ?array {
+    $db = get_database();
+    $stmt = $db->prepare('SELECT * FROM credit_transaction_states WHERE transaction_id = :transaction_id');
+    $stmt->execute([':transaction_id' => $transactionId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function get_credit_accounting_summary(int $orderId): array {
+    $db = get_database();
+    $service = new \App\Accounting\CreditAccountingService($db);
+    return $service->getTransactionLedger($orderId);
+}
+
+function get_credit_period_summary(string $period = 'all', ?string $startDate = null, ?string $endDate = null): array {
+    $db = get_database();
+    $service = new \App\Accounting\CreditAccountingService($db);
+    return $service->getPeriodSummary($period, $startDate, $endDate);
+}
+
+function get_credit_settings(): array {
+    $db = get_database();
+    $stmt = $db->query('SELECT key, value FROM settings WHERE key IN ("credit_penalty_rate", "credit_payment_deadline_days")');
+    $rows = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    return [
+        'penalty_rate' => isset($rows['credit_penalty_rate']) ? (float) $rows['credit_penalty_rate'] : 0.0,
+        'payment_deadline_days' => isset($rows['credit_payment_deadline_days']) ? (int) $rows['credit_payment_deadline_days'] : 0,
+    ];
+}
+
+function save_credit_setting(string $key, string $value): bool {
+    $db = get_database();
+    $allowedKeys = ['credit_penalty_rate', 'credit_payment_deadline_days'];
+    if (!in_array($key, $allowedKeys, true)) {
+        return false;
+    }
+    $stmt = $db->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (:key, :value)');
+    return $stmt->execute([':key' => $key, ':value' => $value]);
 }
